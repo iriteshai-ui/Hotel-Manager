@@ -19,7 +19,7 @@ export const SocketProvider = ({ children }) => {
 
     const fetchInitialData = async () => {
         try {
-            const response = await fetch(`http://${window.location.hostname}:8081/api/initial_data`);
+            const response = await fetch(`/api/initial_data`);
             const data = await response.json();
             if (data.menuItems) setMenuItems(data.menuItems);
             if (data.tables) setTables(data.tables);
@@ -34,7 +34,7 @@ export const SocketProvider = ({ children }) => {
         fetchInitialData();
 
         const client = new Client({
-            webSocketFactory: () => new SockJS(`http://${window.location.hostname}:8081/ws`),
+            webSocketFactory: () => new SockJS(`${window.location.protocol}//${window.location.host}/ws`),
             onConnect: () => {
                 setIsConnected(true);
                 console.log("Connected to STOMP server");
