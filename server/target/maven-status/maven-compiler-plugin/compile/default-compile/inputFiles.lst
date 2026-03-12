@@ -6,6 +6,7 @@
 /home/runner/workspace/server/src/main/java/com/restaurant/controller/MenuController.java
 /home/runner/workspace/server/src/main/java/com/restaurant/controller/MessageController.java
 /home/runner/workspace/server/src/main/java/com/restaurant/controller/OrderController.java
+/home/runner/workspace/server/src/main/java/com/restaurant/controller/SpaController.java
 /home/runner/workspace/server/src/main/java/com/restaurant/model/MenuItem.java
 /home/runner/workspace/server/src/main/java/com/restaurant/model/Order.java
 /home/runner/workspace/server/src/main/java/com/restaurant/model/OrderItem.java

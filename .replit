@@ -55,5 +55,5 @@ externalPort = 80
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["bash", "-c", "java -jar server/target/restaurant-server-0.0.1-SNAPSHOT.jar"]
-build = ["bash", "-c", "cd client && npm install && npm run build && mkdir -p ../server/src/main/resources/static && cp -r dist/* ../server/src/main/resources/static/ && cd ../server && mvn package -DskipTests -q"]
+run = ["bash", "-c", "mkdir -p server/static && cp -r client/dist/* server/static/ && cd server && java -jar target/restaurant-server-0.0.1-SNAPSHOT.jar"]
+build = ["bash", "-c", "cd client && npm install && npm run build"]
