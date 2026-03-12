@@ -1,0 +1,119 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
+
+/* ─────────────────────────────────────────────
+   DESIGN TOKENS  (Tailwind v4 @theme block)
+   Charcoal  · Brand Cream  · Warm Accents
+───────────────────────────────────────────── */
+@theme {
+  /* Font */
+  --font-sans: 'Outfit', sans-serif;
+
+  /* Brand palette - Luxe Dark Theme (Aura Dining) */
+  --color-charcoal:       #0d0d0e;   /* deepest midnight bg */
+  --color-charcoal-light: #18191b;   /* card / component bg */
+  --color-charcoal-mid:   #222326;   /* hover / active bg */
+  --color-charcoal-border:#2a2c30;   /* elegant borders */
+
+  --color-cream:          #f8f9fa;   /* primary text (clean white) */
+  --color-cream-muted:    #a1a1aa;   /* secondary text (slate gray) */
+  --color-cream-dim:      #52525b;   /* tertiary text / disabled */
+
+  /* Bronze / Copper Accents */
+  --color-brand:          #d4af37;   /* Metallic Gold / Bronze */
+  --color-brand-hover:    #b8860b;   /* Dark Goldenrod */
+  --color-brand-light:    rgba(212, 175, 55, 0.08); /* bronze glow */
+  --color-brand-border:   rgba(212, 175, 55, 0.25);
+
+  /* Status overrides for dark mode */
+  --color-success:        #10b981;
+  --color-success-bg:     rgba(16, 185, 129, 0.08);
+  --color-warning:        #f59e0b;
+  --color-warning-bg:     rgba(245, 158, 11, 0.08);
+  --color-danger:         #ef4444;
+  --color-danger-bg:      rgba(239, 68, 68, 0.08);
+}
+
+/* ─────────────────────────────────────────────
+   BASE
+───────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: var(--color-charcoal);
+  background-image:
+    radial-gradient(circle at 0% 0%, rgba(212, 175, 55, 0.03) 0%, transparent 50%),
+    radial-gradient(circle at 100% 100%, rgba(212, 175, 55, 0.02) 0%, transparent 50%);
+  background-attachment: fixed;
+  color: var(--color-cream);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+/* Root – full width, let pages control their own max-widths */
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ─────────────────────────────────────────────
+   ANIMATIONS & EFFECTS
+───────────────────────────────────────────── */
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .animate-float-in {
+    animation: floatIn 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .animate-bounce-in {
+    animation: bounceIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes floatIn {
+  from { opacity: 0; transform: translate(-50%, 40px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@keyframes bounceIn {
+  from { opacity: 0; transform: translate(-50%, -40px) scale(0.9); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+/* ─────────────────────────────────────────────
+   SCROLLBAR
+───────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--color-charcoal); }
+::-webkit-scrollbar-thumb { background: var(--color-charcoal-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-brand-border); }
+
+/* ─────────────────────────────────────────────
+   SELECTION
+───────────────────────────────────────────── */
+::selection {
+  background: var(--color-brand-border);
+  color: var(--color-cream);
+}
