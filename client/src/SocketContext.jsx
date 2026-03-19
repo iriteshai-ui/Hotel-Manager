@@ -17,9 +17,14 @@ export const SocketProvider = ({ children }) => {
     
     const clientRef = useRef(null);
 
+    const getToken = () => localStorage.getItem('auth_token');
+
     const fetchInitialData = async () => {
         try {
-            const response = await fetch(`/api/initial_data`);
+            const headers = { 'Content-Type': 'application/json' };
+            const token = getToken();
+            if (token) headers['X-Auth-Token'] = token;
+            const response = await fetch(`/api/initial_data`, { headers });
             const data = await response.json();
             if (data.menuItems) setMenuItems(data.menuItems);
             if (data.tables) setTables(data.tables);
@@ -30,7 +35,6 @@ export const SocketProvider = ({ children }) => {
     };
 
     useEffect(() => {
-        // Fetch initial data via REST since STOMP is push-based
         fetchInitialData();
 
         const client = new Client({
@@ -39,10 +43,22 @@ export const SocketProvider = ({ children }) => {
                 setIsConnected(true);
                 console.log("Connected to STOMP server");
 
-                // Subscribe to updates
                 client.subscribe('/topic/table_updated', (message) => {
                     const updatedTable = JSON.parse(message.body);
                     setTables((prev) => prev.map(t => t.id === updatedTable.id ? updatedTable : t));
+                });
+
+                client.subscribe('/topic/table_added', (message) => {
+                    const newTable = JSON.parse(message.body);
+                    setTables((prev) => {
+                        if (prev.find(t => t.id === newTable.id)) return prev;
+                        return [...prev, newTable].sort((a, b) => a.number - b.number);
+                    });
+                });
+
+                client.subscribe('/topic/table_deleted', (message) => {
+                    const deleted = JSON.parse(message.body);
+                    setTables((prev) => prev.filter(t => t.id !== deleted.id));
                 });
 
                 client.subscribe('/topic/order_added', (message) => {
@@ -52,7 +68,12 @@ export const SocketProvider = ({ children }) => {
 
                 client.subscribe('/topic/order_updated', (message) => {
                     const updatedOrder = JSON.parse(message.body);
-                    setOrders((prev) => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
+                    setOrders((prev) => {
+                        if (updatedOrder.status === 'PAID') {
+                            return prev.filter(o => o.id !== updatedOrder.id);
+                        }
+                        return prev.map(o => o.id === updatedOrder.id ? updatedOrder : o);
+                    });
                 });
             },
             onDisconnect: () => {
@@ -61,7 +82,6 @@ export const SocketProvider = ({ children }) => {
             },
             onStompError: (frame) => {
                 console.error('Broker reported error: ' + frame.headers['message']);
-                console.error('Additional details: ' + frame.body);
             }
         });
 
@@ -95,13 +115,45 @@ export const SocketProvider = ({ children }) => {
         }
     };
 
+    const freeTable = async (tableNumber) => {
+        const token = getToken();
+        const res = await fetch(`/api/tables/${tableNumber}/free`, {
+            method: 'PUT',
+            headers: { 'X-Auth-Token': token }
+        });
+        return res.ok;
+    };
+
+    const addTable = async (number, capacity = 4) => {
+        const token = getToken();
+        const res = await fetch('/api/tables', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token },
+            body: JSON.stringify({ number, capacity })
+        });
+        return res;
+    };
+
+    const deleteTable = async (number) => {
+        const token = getToken();
+        const res = await fetch(`/api/tables/${number}`, {
+            method: 'DELETE',
+            headers: { 'X-Auth-Token': token }
+        });
+        return res.ok;
+    };
+
     const value = {
         isConnected,
         menuItems,
         tables,
         orders,
         placeOrder,
-        updateOrderStatus
+        updateOrderStatus,
+        freeTable,
+        addTable,
+        deleteTable,
+        refreshData: fetchInitialData,
     };
 
     return (

@@ -1,13 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useSocket } from '../SocketContext';
 import NavBar from '../components/NavBar';
+import BillModal from '../components/BillModal';
 import { Link, useNavigate } from 'react-router-dom';
 
 export default function WaiterDashboard() {
   const { orders, updateOrderStatus, isConnected } = useSocket();
   const navigate = useNavigate();
+  const [billOrder, setBillOrder] = useState(null);
   
-  // Waiter cares about Ready orders
   const readyOrders = orders.filter(o => o.status === 'READY');
   const servedOrders = orders.filter(o => o.status === 'SERVED').slice(-6).reverse();
 
@@ -84,12 +85,21 @@ export default function WaiterDashboard() {
                     ))}
                   </div>
 
-                <button 
-                  className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] text-white bg-gradient-to-r from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-500/20 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]" 
-                  onClick={() => updateOrderStatus(order.id, 'SERVED')}
-                >
-                  Deliver Order
-                </button>
+                <div className="flex gap-2">
+                  <button 
+                    className="flex-1 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] text-white bg-gradient-to-r from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-500/20 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] cursor-pointer" 
+                    onClick={() => updateOrderStatus(order.id, 'SERVED')}
+                  >
+                    Deliver
+                  </button>
+                  <button
+                    className="px-4 py-4 rounded-2xl font-black text-xs uppercase tracking-widest bg-charcoal-mid border border-charcoal-border text-cream-muted hover:bg-brand hover:text-white hover:border-brand transition-all cursor-pointer"
+                    onClick={() => setBillOrder(order)}
+                    title="Print Bill"
+                  >
+                    🧾
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -115,6 +125,14 @@ export default function WaiterDashboard() {
           </div>
         </section>
       </div>
+
+      {billOrder && (
+        <BillModal
+          order={billOrder}
+          tableNumber={billOrder.tableNumber}
+          onClose={() => setBillOrder(null)}
+        />
+      )}
     </div>
   );
 }

@@ -1,10 +1,30 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const NavBar = ({ title, statusBadge }) => {
+  const { isAuthenticated, role, username, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const roleLinks = {
+    MANAGER: [
+      { label: 'Manager', path: '/manager' },
+      { label: 'Waiter', path: '/waiter' },
+      { label: 'Kitchen', path: '/kitchen' },
+    ],
+    WAITER: [{ label: 'Waiter', path: '/waiter' }],
+    KITCHEN: [{ label: 'Kitchen', path: '/kitchen' }],
+  };
+
+  const links = isAuthenticated ? (roleLinks[role] || []) : [];
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
+
   return (
     <nav className="sticky top-0 z-[100] w-full border-b border-charcoal-border bg-charcoal/80 backdrop-blur-xl">
       <div className="max-w-[1400px] mx-auto px-6 h-20 flex items-center justify-between text-cream">
-        {/* Left: Branding */}
         <div className="flex items-center gap-8">
           <Link to="/" className="flex items-center gap-2 group no-underline">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand to-brand-hover flex items-center justify-center shadow-lg shadow-brand/20 group-hover:scale-110 transition-transform">
@@ -15,34 +35,32 @@ const NavBar = ({ title, statusBadge }) => {
               <span className="text-[10px] font-bold tracking-[0.2em] text-brand uppercase leading-none mt-0.5">Dining</span>
             </div>
           </Link>
-
-          {/* Nav Links */}
           <div className="hidden md:flex items-center gap-1">
-            {[
-              { label: 'Menu', path: '/menu' },
-              { label: 'Kitchen', path: '/kitchen' },
-              { label: 'Waiter', path: '/waiter' },
-              { label: 'Manager', path: '/manager' },
-            ].map((link) => (
-              <Link
-                key={link.path}
-                to={link.path}
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-cream-muted hover:text-brand hover:bg-brand-light transition-all no-underline"
-              >
+            {links.map((link) => (
+              <Link key={link.path} to={link.path} className="px-4 py-2 rounded-lg text-sm font-semibold text-cream-muted hover:text-brand hover:bg-brand-light transition-all no-underline">
                 {link.label}
               </Link>
             ))}
           </div>
         </div>
 
-        {/* Right: Dynamic Title / Status */}
-        <div className="flex items-center gap-6">
-          {title && (
-            <h1 className="hidden sm:block text-sm font-bold tracking-widest uppercase text-cream-dim border-l border-charcoal-border pl-6">
-              {title}
-            </h1>
-          )}
+        <div className="flex items-center gap-4">
+          {title && <span className="hidden md:block text-xs font-black tracking-[0.3em] uppercase text-cream-dim">{title}</span>}
           {statusBadge}
+          {isAuthenticated ? (
+            <div className="flex items-center gap-3">
+              <span className="hidden md:block text-xs font-bold text-cream-dim">
+                {username} <span className="text-brand opacity-70">· {role}</span>
+              </span>
+              <button onClick={handleLogout} className="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest text-rose-400 border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500 hover:text-white transition-all cursor-pointer">
+                Logout
+              </button>
+            </div>
+          ) : (
+            <Link to="/login" className="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest text-brand border border-brand/20 bg-brand/10 hover:bg-brand hover:text-white transition-all no-underline">
+              Staff Login
+            </Link>
+          )}
         </div>
       </div>
     </nav>

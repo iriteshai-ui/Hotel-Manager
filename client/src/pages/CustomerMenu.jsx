@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSocket } from '../SocketContext';
 import NavBar from '../components/NavBar';
+import BillModal from '../components/BillModal';
 
 export default function CustomerMenu() {
   const [searchParams] = useSearchParams();
@@ -13,11 +14,20 @@ export default function CustomerMenu() {
   const [showOrderSummary, setShowOrderSummary] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [activeCategory, setActiveCategory] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [billOrder, setBillOrder] = useState(null);
+
+  useEffect(() => {
+    document.title = `Table ${tableNumber} - AURA Dining`;
+    return () => { document.title = 'AURA Dining'; };
+  }, [tableNumber]);
 
   const categories = ['All', ...new Set(menuItems.map(item => item.category))];
-  const filteredItems = activeCategory === 'All' 
-    ? menuItems 
-    : menuItems.filter(item => item.category === activeCategory);
+  const filteredItems = menuItems.filter(item => {
+    const matchesCategory = activeCategory === 'All' || item.category === activeCategory;
+    const matchesSearch = !searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase()) || (item.description || '').toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
 
   const addToCart = (item) => {
     setCart(prev => {
@@ -44,19 +54,18 @@ export default function CustomerMenu() {
 
   const handlePlaceOrder = () => {
     if (cart.length === 0) return;
-
-    // Map cart items to the backend OrderItem model
     const orderItems = cart.map(item => ({
       menuItemId: item.id,
       name: item.name,
       price: item.price,
       quantity: item.quantity
     }));
-
+    const fakeOrder = { items: orderItems, timestamp: new Date().toISOString() };
     placeOrder(tableId, orderItems);
     setCart([]);
     setShowOrderSummary(false);
     setOrderPlaced(true);
+    setBillOrder(fakeOrder);
     setTimeout(() => setOrderPlaced(false), 5000);
   };
 
@@ -81,18 +90,30 @@ export default function CustomerMenu() {
         </p>
       </section>
 
-      {/* Category Nav */}
+      {/* Search + Category Nav */}
       <div className="sticky top-20 z-40 bg-charcoal/80 backdrop-blur-xl border-y border-charcoal-border mb-12">
-        <div className="max-w-[1400px] mx-auto px-6 overflow-x-auto no-scrollbar py-4 flex gap-3">
-          {categories.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
-              className={`px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-[0.2em] transition-all whitespace-nowrap border cursor-pointer ${activeCategory === cat ? 'bg-brand text-white border-brand shadow-lg shadow-brand/20' : 'bg-charcoal-mid text-cream-muted border-charcoal-border hover:border-brand-border'}`}
-            >
-              {cat}
-            </button>
-          ))}
+        <div className="max-w-[1400px] mx-auto px-6 py-3">
+          <div className="relative mb-3">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-cream-dim opacity-50">🔍</span>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search dishes..."
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-charcoal-mid border border-charcoal-border text-cream placeholder-cream-muted/40 focus:outline-none focus:border-brand text-sm font-medium"
+            />
+          </div>
+          <div className="overflow-x-auto no-scrollbar flex gap-3">
+            {categories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setActiveCategory(cat)}
+                className={`px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-[0.2em] transition-all whitespace-nowrap border cursor-pointer ${activeCategory === cat ? 'bg-brand text-white border-brand shadow-lg shadow-brand/20' : 'bg-charcoal-mid text-cream-muted border-charcoal-border hover:border-brand-border'}`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -217,6 +238,14 @@ export default function CustomerMenu() {
             </div>
           </div>
         </div>
+      )}
+
+      {billOrder && (
+        <BillModal
+          order={billOrder}
+          tableNumber={tableNumber}
+          onClose={() => setBillOrder(null)}
+        />
       )}
     </div>
   );
