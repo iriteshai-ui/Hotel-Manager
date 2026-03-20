@@ -59,24 +59,6 @@ export default function BillModal({ order, tableNumber, onClose }) {
     win.close();
   };
 
-  const handleWhatsApp = () => {
-    const lines = [
-      `🍽️ *AURA Dining - Bill*`,
-      `Table: ${tableNumber}`,
-      `Date: ${billDate}`,
-      `---`,
-      ...items.map(i => `${i.quantity}x ${i.name} - ₹${(i.price * i.quantity).toFixed(2)}`),
-      `---`,
-      `Subtotal: ₹${subtotal.toFixed(2)}`,
-      `GST (5%): ₹${gst.toFixed(2)}`,
-      `*Total: ₹${total.toFixed(2)}*`,
-      ``,
-      `Thank you for dining with us! ✨`,
-    ];
-    const msg = encodeURIComponent(lines.join('\n'));
-    window.open(`https://wa.me/?text=${msg}`, '_blank');
-  };
-
   return (
     <>
       <div className="fixed inset-0 bg-charcoal/80 backdrop-blur-xl flex justify-center items-center z-[1000] p-4" onClick={onClose}>
@@ -110,12 +92,9 @@ export default function BillModal({ order, tableNumber, onClose }) {
 
           <p className="text-center text-xs text-cream-dim opacity-50 mt-4 font-medium">Thank you for dining with us ✨</p>
 
-          <div className="mt-6 flex gap-3">
-            <button onClick={handlePrint} className="flex-1 py-3 rounded-2xl bg-charcoal-mid border border-charcoal-border text-cream text-xs font-black uppercase tracking-widest hover:bg-brand hover:border-brand hover:text-white transition-all cursor-pointer">
-              🖨️ Print
-            </button>
-            <button onClick={handleWhatsApp} className="flex-1 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-black uppercase tracking-widest hover:bg-emerald-500 hover:text-white transition-all cursor-pointer">
-              📱 WhatsApp
+          <div className="mt-6">
+            <button onClick={handlePrint} className="w-full py-3 rounded-2xl bg-brand border border-brand text-white text-xs font-black uppercase tracking-widest hover:bg-brand-hover transition-all cursor-pointer">
+              🖨️ Print Bill
             </button>
           </div>
           <button onClick={onClose} className="w-full mt-3 py-3 rounded-2xl text-cream-dim text-xs font-bold hover:text-cream transition-colors cursor-pointer">

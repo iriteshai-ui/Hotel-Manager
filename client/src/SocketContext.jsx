@@ -121,6 +121,10 @@ export const SocketProvider = ({ children }) => {
             method: 'PUT',
             headers: { 'X-Auth-Token': token }
         });
+        if (res.ok) {
+            const updated = await res.json();
+            setTables(prev => prev.map(t => t.id === updated.id ? updated : t));
+        }
         return res.ok;
     };
 
@@ -131,6 +135,13 @@ export const SocketProvider = ({ children }) => {
             headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token },
             body: JSON.stringify({ number, capacity })
         });
+        if (res.ok) {
+            const newTable = await res.json();
+            setTables(prev => {
+                if (prev.find(t => t.id === newTable.id)) return prev;
+                return [...prev, newTable].sort((a, b) => a.number - b.number);
+            });
+        }
         return res;
     };
 
@@ -140,6 +151,9 @@ export const SocketProvider = ({ children }) => {
             method: 'DELETE',
             headers: { 'X-Auth-Token': token }
         });
+        if (res.ok) {
+            setTables(prev => prev.filter(t => t.number !== number));
+        }
         return res.ok;
     };
 
