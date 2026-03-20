@@ -9,7 +9,55 @@ export default function BillModal({ order, tableNumber, onClose }) {
   const total = subtotal + gst;
   const billDate = order.timestamp ? new Date(order.timestamp).toLocaleString('en-IN') : new Date().toLocaleString('en-IN');
 
-  const handlePrint = () => window.print();
+  const handlePrint = () => {
+    const rows = items.map(i =>
+      `<tr>
+        <td style="padding:4px 8px">${i.quantity}× ${i.name}</td>
+        <td style="padding:4px 8px;text-align:right">₹${(i.price * i.quantity).toFixed(2)}</td>
+       </tr>`
+    ).join('');
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Bill - Table ${tableNumber}</title>
+  <style>
+    body { font-family: monospace; max-width: 320px; margin: 24px auto; color: #000; }
+    h2  { text-align: center; font-size: 20px; margin-bottom: 4px; }
+    p   { text-align: center; font-size: 12px; margin: 2px 0; }
+    hr  { border: none; border-top: 1px dashed #000; margin: 10px 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .total td { font-size: 16px; font-weight: bold; padding-top: 8px; }
+    .footer { text-align: center; font-size: 12px; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <h2>AURA Dining</h2>
+  <p>Table ${tableNumber}</p>
+  <p>${billDate}</p>
+  <hr/>
+  <table>
+    <tbody>${rows}</tbody>
+    <tbody>
+      <tr><td colspan="2"><hr/></td></tr>
+      <tr><td style="padding:4px 8px">Subtotal</td><td style="padding:4px 8px;text-align:right">₹${subtotal.toFixed(2)}</td></tr>
+      <tr><td style="padding:4px 8px">GST (5%)</td><td style="padding:4px 8px;text-align:right">₹${gst.toFixed(2)}</td></tr>
+      <tr class="total"><td style="padding:4px 8px">TOTAL</td><td style="padding:4px 8px;text-align:right">₹${total.toFixed(2)}</td></tr>
+    </tbody>
+  </table>
+  <hr/>
+  <p class="footer">Thank you for dining with us!</p>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank', 'width=400,height=600');
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    win.print();
+    win.close();
+  };
 
   const handleWhatsApp = () => {
     const lines = [
@@ -31,15 +79,7 @@ export default function BillModal({ order, tableNumber, onClose }) {
 
   return (
     <>
-      <style>{`
-        @media print {
-          body > *:not(#bill-print-area) { display: none !important; }
-          #bill-print-area { display: block !important; position: fixed; top: 0; left: 0; width: 100%; background: white; color: black; padding: 24px; font-family: monospace; z-index: 9999; }
-          .no-print { display: none !important; }
-        }
-      `}</style>
-
-      <div className="fixed inset-0 bg-charcoal/80 backdrop-blur-xl flex justify-center items-center z-[1000] p-4 no-print" onClick={onClose}>
+      <div className="fixed inset-0 bg-charcoal/80 backdrop-blur-xl flex justify-center items-center z-[1000] p-4" onClick={onClose}>
         <div className="bg-charcoal-light border border-charcoal-border rounded-[32px] p-8 max-w-sm w-full" onClick={e => e.stopPropagation()}>
           <div className="text-center mb-6">
             <h2 className="text-2xl font-black text-cream tracking-tight">AURA Dining</h2>
@@ -82,24 +122,6 @@ export default function BillModal({ order, tableNumber, onClose }) {
             Close
           </button>
         </div>
-      </div>
-
-      <div id="bill-print-area" style={{ display: 'none' }}>
-        <h2 style={{ textAlign: 'center', fontSize: 20, marginBottom: 4 }}>AURA Dining</h2>
-        <p style={{ textAlign: 'center', fontSize: 12 }}>Table {tableNumber} · {billDate}</p>
-        <hr />
-        {items.map((item, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, margin: '4px 0' }}>
-            <span>{item.quantity}x {item.name}</span>
-            <span>₹{(item.price * item.quantity).toFixed(2)}</span>
-          </div>
-        ))}
-        <hr />
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>Subtotal</span><span>₹{subtotal.toFixed(2)}</span></div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>GST (5%)</span><span>₹{gst.toFixed(2)}</span></div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, fontWeight: 'bold', marginTop: 8 }}><span>TOTAL</span><span>₹{total.toFixed(2)}</span></div>
-        <hr />
-        <p style={{ textAlign: 'center', fontSize: 12, marginTop: 8 }}>Thank you for dining with us!</p>
       </div>
     </>
   );
