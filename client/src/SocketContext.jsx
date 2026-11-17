@@ -9,7 +9,6 @@ export const useSocket = () => {
 };
 
 export const SocketProvider = ({ children }) => {
-    const [stompClient, setStompClient] = useState(null);
     const [menuItems, setMenuItems] = useState([]);
     const [tables, setTables] = useState([]);
     const [orders, setOrders] = useState([]);
@@ -87,7 +86,6 @@ export const SocketProvider = ({ children }) => {
 
         client.activate();
         clientRef.current = client;
-        setStompClient(client);
 
         return () => {
             if (clientRef.current) {
@@ -96,22 +94,58 @@ export const SocketProvider = ({ children }) => {
         };
     }, []);
 
-    const placeOrder = (tableId, items) => {
+    const placeOrder = async (tableId, items) => {
+        const tableNumber = parseInt(tableId.replace('t', ''), 10);
         if (clientRef.current && clientRef.current.connected) {
-            const tableNumber = parseInt(tableId.replace('t', ''), 10);
             clientRef.current.publish({
                 destination: '/app/place_order',
                 body: JSON.stringify({ tableNumber, items })
             });
+        } else {
+            try {
+                const res = await fetch('/api/orders', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tableNumber, items })
+                });
+                if (res.ok) {
+                    const newOrder = await res.json();
+                    setOrders((prev) => [...prev, newOrder]);
+                }
+            } catch (err) {
+                console.error("Failed to place order via HTTP fallback:", err);
+            }
         }
     };
 
-    const updateOrderStatus = (orderId, status) => {
+    const updateOrderStatus = async (orderId, status) => {
         if (clientRef.current && clientRef.current.connected) {
             clientRef.current.publish({
                 destination: '/app/update_order_status',
                 body: JSON.stringify({ orderId, status })
             });
+        } else {
+            try {
+                const token = getToken();
+                const headers = { 'Content-Type': 'application/json' };
+                if (token) headers['X-Auth-Token'] = token;
+                const res = await fetch(`/api/orders/${orderId}/status`, {
+                    method: 'PUT',
+                    headers,
+                    body: JSON.stringify({ status })
+                });
+                if (res.ok) {
+                    const updatedOrder = await res.json();
+                    setOrders((prev) => {
+                        if (updatedOrder.status === 'PAID') {
+                            return prev.filter(o => o.id !== updatedOrder.id);
+                        }
+                        return prev.map(o => o.id === updatedOrder.id ? updatedOrder : o);
+                    });
+                }
+            } catch (err) {
+                console.error("Failed to update status via HTTP fallback:", err);
+            }
         }
     };
 

@@ -27,7 +27,7 @@ export default function ManagerDashboard() {
       });
       const data = await res.json();
       setInsights(data);
-    } catch (e) { setInsights(null); }
+    } catch { setInsights(null); }
   };
 
   useEffect(() => {

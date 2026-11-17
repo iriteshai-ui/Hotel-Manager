@@ -1,8 +1,0 @@
-uploads = []
-generated = []
-
-[[outputs]]
-id = "G_vr5p1taOeympCPumuUJ"
-uri = "file://aura-dining.tar.gz"
-type = "unspecified"
-title = "AURA Dining — Full Project Source"

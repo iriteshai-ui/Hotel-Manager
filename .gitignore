@@ -1,6 +1,14 @@
+node_modules/
 client/node_modules/
+server/node_modules/
 client/dist/
 server/target/
+server/data/
+.env
+.env.*
+!.env.example
+*.env
+.DS_Store
 .local/
 *.tar.gz
 *.zip
