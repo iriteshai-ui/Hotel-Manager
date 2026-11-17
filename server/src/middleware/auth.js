@@ -18,6 +18,11 @@ export async function authMiddleware(req, res, next) {
     return next();
   }
 
+  // Hotels & Onboarding routes are public
+  if (path.startsWith('/api/hotels')) {
+    return next();
+  }
+
   // Health endpoint
   if (path === '/api/health') {
     return next();

@@ -10,6 +10,7 @@ const NavBar = ({ title, statusBadge }) => {
       { label: 'Manager', path: '/manager' },
       { label: 'Waiter', path: '/waiter' },
       { label: 'Kitchen', path: '/kitchen' },
+      { label: 'Onboard Hotel', path: '/onboarding' },
     ],
     WAITER: [{ label: 'Waiter', path: '/waiter' }],
     KITCHEN: [{ label: 'Kitchen', path: '/kitchen' }],
@@ -57,9 +58,14 @@ const NavBar = ({ title, statusBadge }) => {
               </button>
             </div>
           ) : (
-            <Link to="/login" className="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest text-brand border border-brand/20 bg-brand/10 hover:bg-brand hover:text-white transition-all no-underline">
-              Staff Login
-            </Link>
+            <div className="flex items-center gap-3">
+              <Link to="/onboarding" className="hidden sm:inline-flex px-3 py-1.5 rounded-lg text-xs font-bold text-cream-dim hover:text-brand hover:bg-brand/10 border border-transparent hover:border-brand/20 transition-all no-underline">
+                🏨 Onboard Property
+              </Link>
+              <Link to="/login" className="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest text-brand border border-brand/20 bg-brand/10 hover:bg-brand hover:text-white transition-all no-underline">
+                Staff Login
+              </Link>
+            </div>
           )}
         </div>
       </div>

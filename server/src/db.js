@@ -64,13 +64,28 @@ export async function initDb() {
         capacity INTEGER DEFAULT 4
       );
 
+      CREATE TABLE IF NOT EXISTS hotels (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(255) NOT NULL,
+        slug VARCHAR(255) UNIQUE NOT NULL,
+        currency VARCHAR(10) DEFAULT 'USD',
+        tax_percentage NUMERIC(5, 2) DEFAULT 10.00,
+        theme JSONB DEFAULT '{"primaryColor":"#D97706","backgroundColor":"#0d0d0e","borderRadius":"12px"}'::jsonb,
+        contact_email VARCHAR(255),
+        contact_phone VARCHAR(50),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS menu_items (
         id VARCHAR(50) PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
         price NUMERIC(10, 2) NOT NULL,
         category VARCHAR(50) NOT NULL,
         description TEXT,
-        image_url VARCHAR(255)
+        image_url VARCHAR(255),
+        is_available BOOLEAN DEFAULT true,
+        dietary_tags TEXT[] DEFAULT '{}',
+        hotel_id UUID
       );
 
       CREATE TABLE IF NOT EXISTS orders (
@@ -174,7 +189,25 @@ function formatMenuItem(row) {
     price: parseFloat(row.price),
     category: row.category,
     description: row.description,
-    imageUrl: row.image_url
+    imageUrl: row.image_url,
+    isAvailable: row.is_available !== false,
+    dietaryTags: row.dietary_tags || [],
+    hotelId: row.hotel_id || null
+  };
+}
+
+function formatHotel(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    currency: row.currency || 'USD',
+    taxPercentage: parseFloat(row.tax_percentage || 10),
+    theme: typeof row.theme === 'string' ? JSON.parse(row.theme) : (row.theme || {}),
+    contactEmail: row.contact_email || '',
+    contactPhone: row.contact_phone || '',
+    createdAt: row.created_at
   };
 }
 
@@ -281,6 +314,57 @@ export const db = {
     return formatMenuItem(res.rows[0]);
   },
 
+  // Hotels
+  async getHotels() {
+    const res = await pool.query('SELECT * FROM hotels ORDER BY created_at DESC;');
+    return res.rows.map(formatHotel);
+  },
+
+  async getHotelBySlug(slug) {
+    const res = await pool.query('SELECT * FROM hotels WHERE slug = $1;', [slug]);
+    return formatHotel(res.rows[0]);
+  },
+
+  async createHotel({ name, slug, currency = 'USD', taxPercentage = 10, theme = {}, contactEmail = '', contactPhone = '' }) {
+    const existing = await this.getHotelBySlug(slug);
+    if (existing) return { error: `Hotel slug "${slug}" is already registered` };
+
+    const themeJson = typeof theme === 'string' ? theme : JSON.stringify(theme);
+    const res = await pool.query(
+      `INSERT INTO hotels (name, slug, currency, tax_percentage, theme, contact_email, contact_phone, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+       RETURNING *;`,
+      [name, slug, currency, taxPercentage, themeJson, contactEmail, contactPhone]
+    );
+    return { hotel: formatHotel(res.rows[0]) };
+  },
+
+  async batchAddMenuItems(hotelId, items = []) {
+    const inserted = [];
+    for (const item of items) {
+      const id = item.id || crypto.randomUUID();
+      const tags = Array.isArray(item.dietaryTags) ? item.dietaryTags : [];
+      const res = await pool.query(
+        `INSERT INTO menu_items (id, name, price, category, description, image_url, is_available, dietary_tags, hotel_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING *;`,
+        [
+          id,
+          item.name,
+          parseFloat(item.price) || 0,
+          item.category || 'Mains',
+          item.description || '',
+          item.imageUrl || '',
+          item.isAvailable !== false,
+          tags,
+          hotelId || null
+        ]
+      );
+      inserted.push(formatMenuItem(res.rows[0]));
+    }
+    return inserted;
+  },
+
   // Orders
   async getAllOrders() {
     const res = await pool.query('SELECT * FROM orders ORDER BY timestamp DESC;');
@@ -374,3 +458,5 @@ export const db = {
     };
   }
 };
+
+export default db;

@@ -35,6 +35,14 @@ export default function Home() {
       icon: '📊',
       color: 'from-blue-500 to-indigo-700',
       badge: 'Admin'
+    },
+    {
+      title: 'Property Onboarding',
+      desc: 'Register hotel tenants, customize theme branding & build menus.',
+      path: '/onboarding',
+      icon: '🏨',
+      color: 'from-amber-500 to-amber-700',
+      badge: 'Super Admin'
     }
   ];
 
@@ -63,7 +71,7 @@ export default function Home() {
 
       {/* Grid Section */}
       <main className="flex-1 max-w-[1400px] mx-auto px-6 pb-24 w-full text-cream">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
           {dashboards.map((dash, idx) => (
             <Link 
               key={idx} 

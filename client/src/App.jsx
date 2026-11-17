@@ -8,6 +8,7 @@ import Kitchen  from './pages/KitchenDisplay';
 import Waiter   from './pages/WaiterDashboard';
 import Home     from './pages/Home';
 import Login    from './pages/Login';
+import HotelOnboarding from './pages/HotelOnboarding';
 
 function ProtectedRoute({ children, roles }) {
   const { isAuthenticated, role } = useAuth();
@@ -29,6 +30,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/menu" element={<Menu />} />
+      <Route path="/onboarding" element={<HotelOnboarding />} />
       <Route path="/" element={<Home />} />
       <Route path="/kitchen" element={
         <ProtectedRoute roles={['KITCHEN', 'MANAGER']}><Kitchen /></ProtectedRoute>
