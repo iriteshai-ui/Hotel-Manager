@@ -1,5 +1,6 @@
 import { pool } from './db.js';
 import crypto from 'crypto';
+import { initRbacSchema } from './rbacDb.js';
 
 export async function initMultiTenantSchema() {
   const client = await pool.connect();
@@ -333,6 +334,8 @@ export async function initMultiTenantSchema() {
     }
 
     console.log('✓ Multi-Tenant Schema & Sample Hotels (A & B) Initialized Successfully!');
+    // Initialize RBAC Schema, Default Roles, Modules, Permissions & User Mappings
+    await initRbacSchema();
   } finally {
     client.release();
   }

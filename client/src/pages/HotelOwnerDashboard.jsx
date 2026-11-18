@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 
 export default function HotelOwnerDashboard() {
-  const { logout, username, role, hotelName: authHotelName, hotelCurrency: authCurrency, login } = useAuth();
+  const { logout, username, role, roles, hotelName: authHotelName, hotelCurrency: authCurrency, login, hasPermission, canAccessModule, isSuperAdmin } = useAuth();
   const [searchParams] = useSearchParams();
   const hotelIdQuery = searchParams.get('hotelId');
   const navigate = useNavigate();
@@ -276,16 +276,25 @@ export default function HotelOwnerDashboard() {
                          dashboardData?.hotel?.currency === 'INR' ? '₹' : 
                          dashboardData?.hotel?.currency === 'GBP' ? '£' : '$';
 
-  const navItems = [
-    { id: 'overview', label: 'Business Overview', icon: BarChart3 },
-    { id: 'analytics', label: 'Sales & Revenue', icon: TrendingUp },
-    { id: 'bookings', label: 'Bookings Management', icon: CalendarCheck },
-    { id: 'rooms', label: 'Room Inventory', icon: BedDouble },
-    { id: 'customers', label: 'Guests & Customers', icon: Users },
-    { id: 'financials', label: 'Financial Reports', icon: FileText },
-    { id: 'staff', label: 'Staff & Operations', icon: UserCheck },
-    { id: 'settings', label: 'Property Settings', icon: Settings },
+  const allNavItems = [
+    { id: 'overview', label: 'Business Overview', icon: BarChart3, module: 'DASHBOARD' },
+    { id: 'analytics', label: 'Sales & Revenue', icon: TrendingUp, module: 'DASHBOARD' },
+    { id: 'bookings', label: 'Bookings Management', icon: CalendarCheck, module: 'BOOKINGS' },
+    { id: 'rooms', label: 'Room Inventory', icon: BedDouble, module: 'ROOMS' },
+    { id: 'customers', label: 'Guests & Customers', icon: Users, module: 'CUSTOMERS' },
+    { id: 'financials', label: 'Financial Reports', icon: FileText, module: 'FINANCIALS' },
+    { id: 'staff', label: 'Staff & Operations', icon: UserCheck, module: 'STAFF' },
+    { id: 'settings', label: 'Property Settings', icon: Settings, module: 'SETTINGS' },
   ];
+
+  // Dynamically filter sidebar modules based on backend Supabase RBAC permissions
+  const navItems = allNavItems.filter(item => isSuperAdmin || canAccessModule(item.module));
+
+  useEffect(() => {
+    if (navItems.length > 0 && !navItems.some(i => i.id === activeTab)) {
+      setActiveTab(navItems[0].id);
+    }
+  }, [navItems, activeTab]);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-[#0F172A] flex flex-col md:flex-row antialiased">
@@ -434,13 +443,15 @@ export default function HotelOwnerDashboard() {
               </a>
             )}
 
-            <button
-              onClick={() => setShowNewBookingModal(true)}
-              className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>New Booking</span>
-            </button>
+            {(isSuperAdmin || hasPermission('BOOKINGS', 'can_add')) && (
+              <button
+                onClick={() => setShowNewBookingModal(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>New Booking</span>
+              </button>
+            )}
           </div>
         </header>
 
@@ -874,12 +885,14 @@ export default function HotelOwnerDashboard() {
                 <h3 className="text-xl font-black text-slate-900">Room Inventory & Availability Matrix</h3>
                 <p className="text-xs text-slate-500">Live room statuses, floor allocation, and pricing</p>
               </div>
-              <button
-                onClick={() => setShowAddRoomModal(true)}
-                className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" /> Add Room to Inventory
-              </button>
+              {(isSuperAdmin || hasPermission('ROOMS', 'can_add')) && (
+                <button
+                  onClick={() => setShowAddRoomModal(true)}
+                  className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" /> Add Room to Inventory
+                </button>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1035,12 +1048,14 @@ export default function HotelOwnerDashboard() {
                 <h3 className="text-xl font-black text-slate-900">Hotel Staff & Daily Operations</h3>
                 <p className="text-xs text-slate-500">Concierge, Front Desk, Housekeeping, and Culinary personnel</p>
               </div>
-              <button
-                onClick={() => setShowAddStaffModal(true)}
-                className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" /> Register Staff Member
-              </button>
+              {(isSuperAdmin || hasPermission('STAFF', 'can_add')) && (
+                <button
+                  onClick={() => setShowAddStaffModal(true)}
+                  className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" /> Register Staff Member
+                </button>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">

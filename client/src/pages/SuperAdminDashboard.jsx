@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
   Building2, Users, BedDouble, CalendarCheck, DollarSign, TrendingUp, 
   ShieldAlert, Settings, FileText, CheckCircle2, XCircle, Search, 
   Plus, ExternalLink, RefreshCw, LogOut, ArrowUpRight, BarChart3,
-  Layers, Lock, Eye, AlertTriangle
+  Layers, Lock, Eye, AlertTriangle, Key, ShieldCheck, Check, Trash2, Edit3, UserCheck, Shield, UtensilsCrossed
 } from 'lucide-react';
 
 export default function SuperAdminDashboard() {
   const { logout, username } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [activeTab, setActiveTab] = useState('overview');
+  const tabParam = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState(tabParam || 'overview');
+  
   const [data, setData] = useState(null);
   const [hotels, setHotels] = useState([]);
   const [users, setUsers] = useState([]);
@@ -20,7 +23,14 @@ export default function SuperAdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // New Hotel Modal State
+  // RBAC State
+  const [roles, setRoles] = useState([]);
+  const [modules, setModules] = useState([]);
+  const [selectedRole, setSelectedRole] = useState(null);
+  const [selectedRolePerms, setSelectedRolePerms] = useState({});
+  const [savingPerms, setSavingPerms] = useState(false);
+
+  // Modals
   const [showAddHotelModal, setShowAddHotelModal] = useState(false);
   const [newHotelForm, setNewHotelForm] = useState({
     name: '',
@@ -31,6 +41,26 @@ export default function SuperAdminDashboard() {
     contactPhone: '',
     ownerUsername: '',
     ownerPassword: ''
+  });
+
+  const [showCreateRoleModal, setShowCreateRoleModal] = useState(false);
+  const [newRoleForm, setNewRoleForm] = useState({ code: '', name: '', description: '' });
+
+  const [showEditRoleModal, setShowEditRoleModal] = useState(false);
+  const [editingRole, setEditingRole] = useState(null);
+
+  const [showUserRoleModal, setShowUserRoleModal] = useState(false);
+  const [selectedUserForRoles, setSelectedUserForRoles] = useState(null);
+  const [userRoleIds, setUserRoleIds] = useState([]);
+
+  const [showCreateUserModal, setShowCreateUserModal] = useState(false);
+  const [newUserForm, setNewUserForm] = useState({
+    username: '',
+    password: '',
+    fullName: '',
+    email: '',
+    hotelId: '',
+    roleIds: []
   });
 
   const [statusMsg, setStatusMsg] = useState(null);
@@ -67,7 +97,7 @@ export default function SuperAdminDashboard() {
   const fetchUsers = async () => {
     try {
       const token = localStorage.getItem('auth_token');
-      const res = await fetch('/api/superadmin/users', { headers: { 'X-Auth-Token': token } });
+      const res = await fetch('/api/superadmin/rbac/users', { headers: { 'X-Auth-Token': token } });
       if (res.ok) setUsers(await res.json());
     } catch (e) { console.error(e); }
   };
@@ -80,12 +110,74 @@ export default function SuperAdminDashboard() {
     } catch (e) { console.error(e); }
   };
 
+  const fetchRbacData = async () => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const [rolesRes, modulesRes] = await Promise.all([
+        fetch('/api/superadmin/rbac/roles', { headers: { 'X-Auth-Token': token } }),
+        fetch('/api/superadmin/rbac/modules', { headers: { 'X-Auth-Token': token } })
+      ]);
+
+      if (rolesRes.ok && modulesRes.ok) {
+        const rolesData = await rolesRes.json();
+        const modulesData = await modulesRes.json();
+        setRoles(rolesData);
+        setModules(modulesData);
+
+        // Select first role if none selected
+        if (!selectedRole && rolesData.length > 0) {
+          selectRoleForEditing(rolesData[0]);
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching RBAC:', e);
+    }
+  };
+
+  const selectRoleForEditing = async (role) => {
+    setSelectedRole(role);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`/api/superadmin/rbac/roles/${role.id}/permissions`, {
+        headers: { 'X-Auth-Token': token }
+      });
+      if (res.ok) {
+        const permsList = await res.json();
+        const map = {};
+        for (const p of permsList) {
+          map[p.module_code] = {
+            can_view: p.can_view === true,
+            can_add: p.can_add === true,
+            can_edit: p.can_edit === true,
+            can_delete: p.can_delete === true,
+            can_manage: p.can_manage === true,
+          };
+        }
+        setSelectedRolePerms(map);
+      }
+    } catch (e) {
+      console.error('Error fetching role perms:', e);
+    }
+  };
+
   useEffect(() => {
     fetchOverview();
     fetchHotels();
     fetchUsers();
     fetchAuditLogs();
+    fetchRbacData();
   }, []);
+
+  useEffect(() => {
+    if (tabParam) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
+
+  const handleTabChange = (tabId) => {
+    setActiveTab(tabId);
+    setSearchParams({ tab: tabId });
+  };
 
   const handleToggleHotelStatus = async (hotelId, currentStatus) => {
     const nextStatus = currentStatus === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
@@ -125,6 +217,7 @@ export default function SuperAdminDashboard() {
         });
         fetchHotels();
         fetchOverview();
+        fetchUsers();
       } else {
         const err = await res.json();
         setStatusMsg({ type: 'error', text: err.error || 'Failed to register hotel' });
@@ -135,9 +228,228 @@ export default function SuperAdminDashboard() {
     setTimeout(() => setStatusMsg(null), 3500);
   };
 
+  // ── RBAC HANDLERS ──
+  const handlePermissionToggle = (moduleCode, action) => {
+    setSelectedRolePerms(prev => {
+      const current = prev[moduleCode] || { can_view: false, can_add: false, can_edit: false, can_delete: false, can_manage: false };
+      const nextVal = !current[action];
+      const updated = { ...current, [action]: nextVal };
+
+      // If user toggles add/edit/delete/manage to true, view must also be true
+      if (action !== 'can_view' && nextVal) {
+        updated.can_view = true;
+      }
+      // If user toggles view to false, other permissions must be turned off
+      if (action === 'can_view' && !nextVal) {
+        updated.can_add = false;
+        updated.can_edit = false;
+        updated.can_delete = false;
+        updated.can_manage = false;
+      }
+      // If manage is turned on, turn on all
+      if (action === 'can_manage' && nextVal) {
+        updated.can_view = true;
+        updated.can_add = true;
+        updated.can_edit = true;
+        updated.can_delete = true;
+      }
+
+      return {
+        ...prev,
+        [moduleCode]: updated
+      };
+    });
+  };
+
+  const handleSaveRolePermissions = async () => {
+    if (!selectedRole) return;
+    setSavingPerms(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const permissionsArray = modules.map(m => {
+        const p = selectedRolePerms[m.code] || {};
+        return {
+          module_code: m.code,
+          can_view: p.can_view === true,
+          can_add: p.can_add === true,
+          can_edit: p.can_edit === true,
+          can_delete: p.can_delete === true,
+          can_manage: p.can_manage === true
+        };
+      });
+
+      const res = await fetch(`/api/superadmin/rbac/roles/${selectedRole.id}/permissions`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token },
+        body: JSON.stringify({ permissions: permissionsArray })
+      });
+
+      if (res.ok) {
+        setStatusMsg({ type: 'success', text: `Permissions updated for role "${selectedRole.name}"` });
+        fetchRbacData();
+      } else {
+        const err = await res.json();
+        setStatusMsg({ type: 'error', text: err.error || 'Failed to update permissions' });
+      }
+    } catch {
+      setStatusMsg({ type: 'error', text: 'Network error saving permissions' });
+    } finally {
+      setSavingPerms(false);
+      setTimeout(() => setStatusMsg(null), 3500);
+    }
+  };
+
+  const handleBulkPermissionPreset = (preset) => {
+    setSelectedRolePerms(prev => {
+      const nextMap = {};
+      for (const m of modules) {
+        if (preset === 'ALL') {
+          nextMap[m.code] = { can_view: true, can_add: true, can_edit: true, can_delete: true, can_manage: true };
+        } else if (preset === 'VIEW_ONLY') {
+          nextMap[m.code] = { can_view: true, can_add: false, can_edit: false, can_delete: false, can_manage: false };
+        } else if (preset === 'CLEAR') {
+          nextMap[m.code] = { can_view: false, can_add: false, can_edit: false, can_delete: false, can_manage: false };
+        }
+      }
+      return nextMap;
+    });
+  };
+
+  const handleCreateRole = async (e) => {
+    e.preventDefault();
+    try {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch('/api/superadmin/rbac/roles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token },
+        body: JSON.stringify(newRoleForm)
+      });
+      if (res.ok) {
+        const created = await res.json();
+        setStatusMsg({ type: 'success', text: `Role "${created.name}" created successfully!` });
+        setShowCreateRoleModal(false);
+        setNewRoleForm({ code: '', name: '', description: '' });
+        await fetchRbacData();
+        selectRoleForEditing(created);
+      } else {
+        const err = await res.json();
+        setStatusMsg({ type: 'error', text: err.error || 'Failed to create role' });
+      }
+    } catch {
+      setStatusMsg({ type: 'error', text: 'Network error creating role' });
+    }
+    setTimeout(() => setStatusMsg(null), 3500);
+  };
+
+  const handleUpdateRole = async (e) => {
+    e.preventDefault();
+    if (!editingRole) return;
+    try {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`/api/superadmin/rbac/roles/${editingRole.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token },
+        body: JSON.stringify({ name: editingRole.name, description: editingRole.description })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setStatusMsg({ type: 'success', text: `Role "${updated.name}" updated!` });
+        setShowEditRoleModal(false);
+        setEditingRole(null);
+        await fetchRbacData();
+        setSelectedRole(updated);
+      }
+    } catch {
+      setStatusMsg({ type: 'error', text: 'Failed to update role' });
+    }
+    setTimeout(() => setStatusMsg(null), 3000);
+  };
+
+  const handleDeleteRole = async (roleId, roleName) => {
+    if (!window.confirm(`Are you sure you want to delete role "${roleName}"? This will revoke access for mapped users.`)) {
+      return;
+    }
+    try {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`/api/superadmin/rbac/roles/${roleId}`, {
+        method: 'DELETE',
+        headers: { 'X-Auth-Token': token }
+      });
+      if (res.ok) {
+        setStatusMsg({ type: 'success', text: `Role "${roleName}" deleted.` });
+        await fetchRbacData();
+        setSelectedRole(null);
+      } else {
+        const err = await res.json();
+        setStatusMsg({ type: 'error', text: err.error || 'Failed to delete role' });
+      }
+    } catch {
+      setStatusMsg({ type: 'error', text: 'Error deleting role' });
+    }
+    setTimeout(() => setStatusMsg(null), 3500);
+  };
+
+  const handleOpenUserRoleModal = (u) => {
+    setSelectedUserForRoles(u);
+    const assignedIds = (u.assigned_roles || []).map(r => r.id);
+    setUserRoleIds(assignedIds);
+    setShowUserRoleModal(true);
+  };
+
+  const handleSaveUserRoles = async () => {
+    if (!selectedUserForRoles) return;
+    try {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`/api/superadmin/rbac/users/${selectedUserForRoles.id}/roles`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token },
+        body: JSON.stringify({ roleIds: userRoleIds })
+      });
+      if (res.ok) {
+        setStatusMsg({ type: 'success', text: `Updated roles for ${selectedUserForRoles.username}` });
+        setShowUserRoleModal(false);
+        fetchUsers();
+        fetchRbacData();
+      }
+    } catch {
+      setStatusMsg({ type: 'error', text: 'Failed to assign roles' });
+    }
+    setTimeout(() => setStatusMsg(null), 3000);
+  };
+
+  const handleCreateUserWithRoles = async (e) => {
+    e.preventDefault();
+    if (newUserForm.roleIds.length === 0) {
+      setStatusMsg({ type: 'error', text: 'Please select at least one role for this user.' });
+      return;
+    }
+    try {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch('/api/superadmin/rbac/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token },
+        body: JSON.stringify(newUserForm)
+      });
+      if (res.ok) {
+        setStatusMsg({ type: 'success', text: `User ${newUserForm.username} created successfully!` });
+        setShowCreateUserModal(false);
+        setNewUserForm({ username: '', password: '', fullName: '', email: '', hotelId: '', roleIds: [] });
+        fetchUsers();
+        fetchRbacData();
+      } else {
+        const err = await res.json();
+        setStatusMsg({ type: 'error', text: err.error || 'Failed to create user' });
+      }
+    } catch {
+      setStatusMsg({ type: 'error', text: 'Network error creating user' });
+    }
+    setTimeout(() => setStatusMsg(null), 3500);
+  };
+
   const navItems = [
     { id: 'overview', label: 'Platform Overview', icon: BarChart3 },
     { id: 'hotels', label: 'Registered Hotels', icon: Building2 },
+    { id: 'rbac', label: 'Roles & Permissions (RBAC)', icon: ShieldCheck, badge: 'Dynamic' },
     { id: 'users', label: 'Hotel Owners & Users', icon: Users },
     { id: 'audit', label: 'Security & Audit Logs', icon: ShieldAlert },
     { id: 'reports', label: 'Consolidated Reports', icon: FileText },
@@ -167,7 +479,7 @@ export default function SuperAdminDashboard() {
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-300">Active Tenant Scope</span>
             </div>
             <p className="text-xs font-bold text-white">Full Platform Owner</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">Global Cross-Hotel Access</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">Global Cross-Hotel Access & RBAC</p>
           </div>
 
           {/* Nav List */}
@@ -178,216 +490,200 @@ export default function SuperAdminDashboard() {
               return (
                 <button
                   key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                    isActive 
-                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30' 
+                  onClick={() => handleTabChange(item.id)}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    isActive
+                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
                       : 'text-slate-400 hover:text-white hover:bg-white/5'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
-                  <span>{item.label}</span>
+                  <div className="flex items-center gap-3">
+                    <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                    <span>{item.label}</span>
+                  </div>
+                  {item.badge && (
+                    <span className="text-[9px] uppercase font-black px-1.5 py-0.5 rounded bg-indigo-500/30 text-indigo-300">
+                      {item.badge}
+                    </span>
+                  )}
                 </button>
               );
             })}
           </nav>
         </div>
 
-        {/* Footer Admin User */}
-        <div className="pt-6 border-t border-slate-800">
-          <div className="flex items-center justify-between mb-3">
+        {/* User Footer */}
+        <div className="pt-6 border-t border-white/10 mt-6">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-xs font-black text-indigo-300">
+              <div className="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-xs">
                 SA
               </div>
               <div>
-                <p className="text-xs font-bold text-white leading-tight">{username}</p>
-                <p className="text-[10px] text-indigo-400 font-semibold uppercase">Platform Owner</p>
+                <p className="text-xs font-bold text-white">{username}</p>
+                <p className="text-[10px] text-slate-400">Platform Super Admin</p>
               </div>
             </div>
             <button
-              onClick={() => { logout(); navigate('/login'); }}
-              title="Sign Out"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-white/5 transition-colors cursor-pointer"
+              onClick={async () => {
+                await logout();
+                navigate('/login');
+              }}
+              title="Logout"
+              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
             </button>
-          </div>
-
-          <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
-            <span>Aura v2.6.4 Multi-Tenant</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
           </div>
         </div>
       </aside>
 
       {/* ── MAIN CONTENT AREA ── */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        {/* Top Header Bar */}
-        <header className="h-18 bg-white border-b border-slate-200 px-8 flex items-center justify-between flex-shrink-0">
-          <div>
-            <h2 className="text-lg font-black text-[#0F172A] tracking-tight capitalize">
-              {navItems.find(i => i.id === activeTab)?.label || 'Dashboard'}
+      <main className="flex-1 overflow-y-auto">
+        {/* Top Header */}
+        <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-200 px-8 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <h2 className="text-lg font-black text-slate-900 capitalize">
+              {navItems.find(n => n.id === activeTab)?.label || 'Dashboard'}
             </h2>
-            <p className="text-xs text-slate-500 font-medium">
-              Multi-property oversight with server-enforced tenant boundaries
-            </p>
+            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+              Supabase PostgreSQL
+            </span>
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Quick Switch to Hotel Owner Portal */}
-            <button
-              onClick={() => navigate('/hotel-dashboard')}
-              className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-xs font-bold text-slate-700 transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Eye className="w-3.5 h-3.5 text-slate-500" />
-              <span>Switch to Hotel Owner View</span>
-            </button>
+            {activeTab === 'rbac' && (
+              <>
+                <button
+                  onClick={() => setShowCreateRoleModal(true)}
+                  className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/15 flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Create Role
+                </button>
+                <button
+                  onClick={() => setShowCreateUserModal(true)}
+                  className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-md flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Users className="w-3.5 h-3.5" /> Provision User
+                </button>
+              </>
+            )}
+
+            {activeTab === 'hotels' && (
+              <button
+                onClick={() => setShowAddHotelModal(true)}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/15 flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" /> Register Hotel
+              </button>
+            )}
 
             <button
-              onClick={() => setShowAddHotelModal(true)}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Register New Property</span>
-            </button>
-
-            <button
-              onClick={() => { fetchOverview(); fetchHotels(); }}
+              onClick={() => {
+                fetchOverview();
+                fetchHotels();
+                fetchUsers();
+                fetchRbacData();
+              }}
+              className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors cursor-pointer"
               title="Refresh Platform Data"
-              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 transition-colors cursor-pointer"
             >
               <RefreshCw className="w-4 h-4" />
             </button>
           </div>
         </header>
 
-        {/* Status Toast */}
+        {/* Global Toast Alert */}
         {statusMsg && (
           <div className="px-8 pt-4">
-            <div className={`p-3.5 rounded-xl text-xs font-bold flex items-center gap-2 ${
-              statusMsg.type === 'error'
-                ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+            <div className={`p-3.5 rounded-xl text-xs font-bold flex items-center justify-between border ${
+              statusMsg.type === 'success' 
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+                : 'bg-rose-50 text-rose-800 border-rose-200'
             }`}>
-              {statusMsg.type === 'error' ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
               <span>{statusMsg.text}</span>
+              <button onClick={() => setStatusMsg(null)} className="cursor-pointer text-slate-400 hover:text-slate-700">✕</button>
             </div>
-          </div>
-        )}
-
-        {/* Error Alert */}
-        {error && (
-          <div className="m-8 p-6 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800">
-            <h3 className="font-bold text-sm mb-1">Access or Synchronization Error</h3>
-            <p className="text-xs leading-relaxed">{error}</p>
           </div>
         )}
 
         {/* Tab 1: OVERVIEW */}
         {activeTab === 'overview' && data && (
           <div className="p-8 space-y-8 animate-fade-in">
-            {/* Top KPI Cards (Platform Consolidated) */}
+            {/* KPI Cards Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-              {/* Total Hotels */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Hotels</span>
-                  <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+              <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Registered Hotels</span>
+                  <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
                     <Building2 className="w-4 h-4" />
                   </div>
                 </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-black text-slate-900">{data.totalHotels}</span>
-                  <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                    {data.activeHotels} Active
-                  </span>
+                <div className="mt-4">
+                  <span className="text-2xl font-black text-slate-900">{data.totalHotels}</span>
+                  <span className="text-xs text-emerald-600 font-bold ml-2">● {data.activeHotels} Active</span>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-2 font-medium">
-                  {data.inactiveHotels} pending/inactive properties
-                </p>
               </div>
 
-              {/* Total Platform Revenue */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Platform Gross Sales</span>
-                  <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
-                    <DollarSign className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-black text-slate-900">${data.totalRevenue.toLocaleString()}</span>
-                  <span className="text-xs font-bold text-emerald-600 flex items-center">
-                    <ArrowUpRight className="w-3.5 h-3.5" /> +18.4%
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-500 mt-2 font-medium">
-                  ${data.totalCollections.toLocaleString()} collected in escrow
-                </p>
-              </div>
-
-              {/* Total Rooms Across Hotels */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Rooms Inventory</span>
-                  <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+              <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Rooms</span>
+                  <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
                     <BedDouble className="w-4 h-4" />
                   </div>
                 </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-black text-slate-900">{data.totalRooms}</span>
-                  <span className="text-xs font-bold text-slate-600">Rooms</span>
+                <div className="mt-4">
+                  <span className="text-2xl font-black text-slate-900">{data.totalRooms}</span>
+                  <span className="text-xs text-slate-500 font-medium ml-2">Across all properties</span>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-2 font-medium">
-                  Across {data.totalHotels} properties registered
-                </p>
               </div>
 
-              {/* Total Bookings */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Bookings</span>
-                  <div className="w-9 h-9 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-600">
+              <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Bookings</span>
+                  <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
                     <CalendarCheck className="w-4 h-4" />
                   </div>
                 </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-black text-slate-900">{data.totalBookings}</span>
-                  <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-100">
-                    Verified
-                  </span>
+                <div className="mt-4">
+                  <span className="text-2xl font-black text-slate-900">{data.totalBookings}</span>
+                  <span className="text-xs text-emerald-600 font-bold ml-2">↑ 14% this month</span>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-2 font-medium">
-                  {data.totalUsers} registered staff & owners
-                </p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Platform Revenue</span>
+                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                    <DollarSign className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <span className="text-2xl font-black text-slate-900">${data.totalRevenue.toLocaleString()}</span>
+                  <span className="text-xs text-slate-500 font-medium ml-2">Total gross sales</span>
+                </div>
               </div>
             </div>
 
             {/* Hotel Performance Comparison Table */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                  <h3 className="text-base font-black text-slate-900">Hotel-Wise Performance Comparison</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Live revenue, inventory breakdown, and occupancy rates per tenant
-                  </p>
+                  <h3 className="text-base font-black text-slate-900">Hotel Property Performance Comparison</h3>
+                  <p className="text-xs text-slate-500">Real-time financial and occupancy benchmarking across tenant properties</p>
                 </div>
-                <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl">
-                  {data.hotelPerformance.length} Properties Analyzed
-                </span>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-black tracking-wider text-[10px]">
                     <tr>
-                      <th className="py-3.5 px-6">Hotel Property</th>
-                      <th className="py-3.5 px-6">Owner Account</th>
-                      <th className="py-3.5 px-6">Rooms</th>
+                      <th className="py-3.5 px-6">Property Name / Slug</th>
+                      <th className="py-3.5 px-6">Assigned Owner</th>
+                      <th className="py-3.5 px-6">Inventory</th>
                       <th className="py-3.5 px-6">Bookings</th>
                       <th className="py-3.5 px-6">Total Sales</th>
-                      <th className="py-3.5 px-6">Occupancy</th>
+                      <th className="py-3.5 px-6">Occupancy Rate</th>
                       <th className="py-3.5 px-6">Status</th>
                       <th className="py-3.5 px-6 text-right">Actions</th>
                     </tr>
@@ -450,74 +746,6 @@ export default function SuperAdminDashboard() {
                 </table>
               </div>
             </div>
-
-            {/* Platform Revenue Trends & Activity Audit Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-              {/* Monthly Revenue Trends Chart */}
-              <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h3 className="text-base font-black text-slate-900">Platform Monthly Sales Trajectory</h3>
-                    <p className="text-xs text-slate-500">Gross transaction volume across all registered properties</p>
-                  </div>
-                  <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">
-                    Real-time
-                  </span>
-                </div>
-
-                <div className="h-56 flex items-end gap-6 pt-6 px-4 border-b border-slate-100">
-                  {data.monthlyRevenueTrends.map((t, idx) => {
-                    const maxRev = Math.max(...data.monthlyRevenueTrends.map(m => m.revenue), 1000);
-                    const heightPct = Math.max((t.revenue / maxRev) * 100, 15);
-                    return (
-                      <div key={idx} className="flex-1 flex flex-col items-center gap-2 group">
-                        <span className="text-[10px] font-bold text-slate-400 group-hover:text-indigo-600 transition-colors">
-                          ${t.revenue.toLocaleString()}
-                        </span>
-                        <div 
-                          className="w-full max-w-[48px] bg-gradient-to-t from-indigo-600 to-indigo-500 rounded-t-xl group-hover:from-indigo-500 group-hover:to-indigo-400 transition-all shadow-md shadow-indigo-600/10"
-                          style={{ height: `${heightPct}%` }}
-                        />
-                        <span className="text-[11px] font-bold text-slate-600 mt-1">{t.month}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Recent Security & Activity Audit Log */}
-              <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                    <ShieldAlert className="w-4 h-4 text-indigo-600" /> System Audit Trail
-                  </h3>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Live SecLog</span>
-                </div>
-
-                <div className="space-y-3">
-                  {data.auditLogs.map((log) => (
-                    <div key={log.id} className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex items-start justify-between gap-2">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-black text-slate-800">{log.action}</span>
-                          {log.hotel_name && (
-                            <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
-                              {log.hotel_name}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-slate-500 mt-0.5 font-mono">
-                          actor: <strong className="text-slate-700">{log.username}</strong> • resource: {log.resource}
-                        </p>
-                      </div>
-                      <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">
-                        {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
@@ -526,85 +754,358 @@ export default function SuperAdminDashboard() {
           <div className="p-8 space-y-6 animate-fade-in">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-xl font-black text-slate-900">Registered Hotel Tenants</h3>
-                <p className="text-xs text-slate-500">Manage properties, credentials, and live availability</p>
+                <h3 className="text-xl font-black text-slate-900">Hotel Properties Directory</h3>
+                <p className="text-xs text-slate-500">Super Admin hotel lifecycle management & multi-tenant status controls</p>
               </div>
               <button
                 onClick={() => setShowAddHotelModal(true)}
-                className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold shadow-md shadow-indigo-600/20 hover:bg-indigo-700 transition-all flex items-center gap-1.5 cursor-pointer"
+                className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/15 flex items-center gap-1.5 cursor-pointer"
               >
                 <Plus className="w-4 h-4" /> Add Hotel Property
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {hotels.map(h => (
-                <div key={h.id} className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black text-lg">
-                      {h.name.charAt(0).toUpperCase()}
-                    </div>
-                    <button
-                      onClick={() => handleToggleHotelStatus(h.id, h.status)}
-                      className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border cursor-pointer transition-colors ${
-                        h.status === 'ACTIVE'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                          : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
-                      }`}
-                    >
-                      {h.status === 'ACTIVE' ? 'Active' : 'Inactive'}
-                    </button>
-                  </div>
-
-                  <h4 className="text-base font-black text-slate-900 mb-1">{h.name}</h4>
-                  <p className="text-xs text-slate-500 font-mono mb-4">slug: {h.slug} • {h.currency} ({h.tax_percentage}% Tax)</p>
-
-                  <div className="grid grid-cols-2 gap-3 py-3 border-y border-slate-100 text-xs mb-4">
-                    <div>
-                      <span className="text-slate-400 text-[10px] uppercase font-bold block">Rooms</span>
-                      <span className="font-bold text-slate-800">{h.rooms_count || 0} registered</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 text-[10px] uppercase font-bold block">Gross Sales</span>
-                      <span className="font-black text-slate-900">{h.currency} {Number(h.total_sales || 0).toLocaleString()}</span>
-                    </div>
-                  </div>
-
-                  <div className="text-xs text-slate-500 mb-4 space-y-1">
-                    <p>Owner: <strong className="text-slate-800">{h.owner_name || 'Not assigned'}</strong></p>
-                    <p className="font-mono text-[11px]">Email: {h.contact_email || '—'}</p>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <a
-                      href={`/menu?hotel=${h.slug}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex-1 py-2 text-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors no-underline"
-                    >
-                      Guest Portal ↗
-                    </a>
-                    <button
-                      onClick={() => navigate(`/hotel-dashboard?hotelId=${h.id}`)}
-                      className="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-colors cursor-pointer"
-                    >
-                      Manage Dashboard
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-black tracking-wider text-[10px]">
+                  <tr>
+                    <th className="py-3.5 px-6">Hotel Property</th>
+                    <th className="py-3.5 px-6">Slug & Link</th>
+                    <th className="py-3.5 px-6">Currency & Tax</th>
+                    <th className="py-3.5 px-6">Contact Info</th>
+                    <th className="py-3.5 px-6">Rooms</th>
+                    <th className="py-3.5 px-6">Tenant Status</th>
+                    <th className="py-3.5 px-6 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {hotels.map((h) => (
+                    <tr key={h.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-4 px-6 font-bold text-slate-900 text-sm">
+                        {h.name}
+                      </td>
+                      <td className="py-4 px-6 font-mono text-slate-500">
+                        /{h.slug}
+                      </td>
+                      <td className="py-4 px-6 font-bold text-slate-700">
+                        {h.currency} · {h.tax_percentage || 10}% tax
+                      </td>
+                      <td className="py-4 px-6 text-slate-500">
+                        {h.contact_email || '—'}
+                      </td>
+                      <td className="py-4 px-6 font-bold text-slate-800">
+                        {h.roomsCount || 0} rooms
+                      </td>
+                      <td className="py-4 px-6">
+                        <button
+                          onClick={() => handleToggleHotelStatus(h.id, h.status)}
+                          className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border cursor-pointer transition-all ${
+                            h.status === 'ACTIVE'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                              : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                          }`}
+                        >
+                          {h.status}
+                        </button>
+                      </td>
+                      <td className="py-4 px-6 text-right">
+                        <a
+                          href={`/menu?hotel=${h.slug}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors inline-flex items-center gap-1 no-underline"
+                        >
+                          Menu <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
 
-        {/* Tab 3: USERS & ROLES */}
+        {/* Tab 3: DYNAMIC ROLE-BASED ACCESS CONTROL (RBAC) */}
+        {activeTab === 'rbac' && (
+          <div className="p-8 space-y-6 animate-fade-in">
+            {/* Header info banner */}
+            <div className="p-6 rounded-2xl bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-xl relative overflow-hidden">
+              <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-indigo-500/30 text-indigo-300 border border-indigo-400/30">
+                      Multi-Tenant RBAC Architecture
+                    </span>
+                    <span className="text-xs text-slate-300 font-semibold">• Supabase PostgreSQL</span>
+                  </div>
+                  <h3 className="text-2xl font-black text-white">Dynamic Role & Menu Permission Engine</h3>
+                  <p className="text-xs text-slate-300 max-w-2xl mt-1">
+                    Create multiple roles, configure granular menu and action permissions (View, Add, Edit, Delete, Manage), and map users. All changes persist directly to the database.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowCreateRoleModal(true)}
+                    className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" /> Add Role
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Two-Column RBAC Layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* Left Column: Roles Roster */}
+              <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900">System Roles</h4>
+                    <p className="text-[11px] text-slate-400">{roles.length} roles registered in database</p>
+                  </div>
+                  <button
+                    onClick={() => setShowCreateRoleModal(true)}
+                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> New
+                  </button>
+                </div>
+
+                <div className="space-y-2.5">
+                  {roles.map((r) => {
+                    const isSelected = selectedRole?.id === r.id;
+                    return (
+                      <div
+                        key={r.id}
+                        onClick={() => selectRoleForEditing(r)}
+                        className={`p-3.5 rounded-xl border transition-all cursor-pointer relative ${
+                          isSelected
+                            ? 'bg-indigo-50/80 border-indigo-300 shadow-sm'
+                            : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-xs text-slate-900 truncate">{r.name}</span>
+                              {r.is_system && (
+                                <span title="Protected System Role" className="text-amber-500">
+                                  <Lock className="w-3 h-3" />
+                                </span>
+                              )}
+                            </div>
+                            <span className="font-mono text-[10px] text-indigo-600 font-bold block mt-0.5">
+                              {r.code}
+                            </span>
+                            <p className="text-[11px] text-slate-500 line-clamp-2 mt-1">
+                              {r.description || 'No description provided.'}
+                            </p>
+                          </div>
+
+                          <div className="flex flex-col items-end gap-1.5">
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-600">
+                              {r.user_count || 0} users
+                            </span>
+                            {!r.is_system && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteRole(r.id, r.name);
+                                }}
+                                className="text-slate-400 hover:text-rose-600 p-1 transition-colors cursor-pointer"
+                                title="Delete Custom Role"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Right Column: Menu & Action Permission Matrix */}
+              <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+                {selectedRole ? (
+                  <>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-base font-black text-slate-900">
+                            Permissions for <span className="text-indigo-600 font-black">{selectedRole.name}</span>
+                          </h4>
+                          {selectedRole.is_system && (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200">
+                              System Role
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Configure menu visibility and granular module operations (View, Add, Edit, Delete, Manage)
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {/* Preset Actions */}
+                        <div className="hidden sm:flex items-center gap-1 border border-slate-200 rounded-lg p-1 bg-slate-50 text-[10px] font-bold">
+                          <button
+                            onClick={() => handleBulkPermissionPreset('ALL')}
+                            className="px-2 py-1 rounded hover:bg-white text-slate-700 transition-colors cursor-pointer"
+                          >
+                            Full Access
+                          </button>
+                          <button
+                            onClick={() => handleBulkPermissionPreset('VIEW_ONLY')}
+                            className="px-2 py-1 rounded hover:bg-white text-slate-700 transition-colors cursor-pointer"
+                          >
+                            Read Only
+                          </button>
+                          <button
+                            onClick={() => handleBulkPermissionPreset('CLEAR')}
+                            className="px-2 py-1 rounded hover:bg-white text-rose-600 transition-colors cursor-pointer"
+                          >
+                            Revoke All
+                          </button>
+                        </div>
+
+                        <button
+                          onClick={handleSaveRolePermissions}
+                          disabled={savingPerms}
+                          className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider shadow-md shadow-indigo-600/15 flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Check className="w-3.5 h-3.5" /> {savingPerms ? 'Saving...' : 'Save Permissions'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Permissions Matrix Table */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-black tracking-wider text-[10px]">
+                          <tr>
+                            <th className="py-3 px-4">Menu / Module</th>
+                            <th className="py-3 px-3 text-center">👁️ View</th>
+                            <th className="py-3 px-3 text-center">➕ Add</th>
+                            <th className="py-3 px-3 text-center">✏️ Edit</th>
+                            <th className="py-3 px-3 text-center">🗑️ Delete</th>
+                            <th className="py-3 px-3 text-center">⚡ Manage</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {modules.map((m) => {
+                            const perms = selectedRolePerms[m.code] || {
+                              can_view: false, can_add: false, can_edit: false, can_delete: false, can_manage: false
+                            };
+                            return (
+                              <tr key={m.code} className="hover:bg-slate-50/80 transition-colors">
+                                <td className="py-3 px-4">
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-slate-900 text-xs">{m.label}</span>
+                                      <span className="px-1.5 py-0.2 rounded text-[9px] font-mono uppercase bg-slate-100 text-slate-500">
+                                        {m.code}
+                                      </span>
+                                    </div>
+                                    <span className="text-[11px] text-slate-400 block mt-0.5 line-clamp-1">
+                                      {m.description}
+                                    </span>
+                                  </div>
+                                </td>
+
+                                {/* View checkbox */}
+                                <td className="py-3 px-3 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={perms.can_view === true}
+                                    onChange={() => handlePermissionToggle(m.code, 'can_view')}
+                                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+                                  />
+                                </td>
+
+                                {/* Add checkbox */}
+                                <td className="py-3 px-3 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={perms.can_add === true}
+                                    onChange={() => handlePermissionToggle(m.code, 'can_add')}
+                                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+                                  />
+                                </td>
+
+                                {/* Edit checkbox */}
+                                <td className="py-3 px-3 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={perms.can_edit === true}
+                                    onChange={() => handlePermissionToggle(m.code, 'can_edit')}
+                                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+                                  />
+                                </td>
+
+                                {/* Delete checkbox */}
+                                <td className="py-3 px-3 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={perms.can_delete === true}
+                                    onChange={() => handlePermissionToggle(m.code, 'can_delete')}
+                                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+                                  />
+                                </td>
+
+                                {/* Manage checkbox */}
+                                <td className="py-3 px-3 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={perms.can_manage === true}
+                                    onChange={() => handlePermissionToggle(m.code, 'can_manage')}
+                                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button
+                        onClick={handleSaveRolePermissions}
+                        disabled={savingPerms}
+                        className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-indigo-600/20 flex items-center gap-2 cursor-pointer"
+                      >
+                        <Check className="w-4 h-4" /> {savingPerms ? 'Saving Permissions...' : 'Save Changes to Supabase'}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="p-12 text-center text-slate-400">
+                    <Shield className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm font-semibold">Select a role from the left to configure menu & action permissions.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 4: USERS & ROLES */}
         {activeTab === 'users' && (
           <div className="p-8 space-y-6 animate-fade-in">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-xl font-black text-slate-900">Platform Users & Assigned Roles</h3>
-                <p className="text-xs text-slate-500">Super Admins, Property Owners, Managers, and Staff accounts</p>
+                <p className="text-xs text-slate-500">Super Admins, Property Owners, Managers, and Staff accounts mapped to dynamic roles</p>
               </div>
+              <button
+                onClick={() => setShowCreateUserModal(true)}
+                className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/15 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" /> Provision New User
+              </button>
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -612,9 +1113,10 @@ export default function SuperAdminDashboard() {
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-black tracking-wider text-[10px]">
                   <tr>
                     <th className="py-3.5 px-6">User / Full Name</th>
-                    <th className="py-3.5 px-6">Assigned Role</th>
+                    <th className="py-3.5 px-6">Assigned Roles</th>
                     <th className="py-3.5 px-6">Hotel Property Scope</th>
                     <th className="py-3.5 px-6">Status</th>
+                    <th className="py-3.5 px-6 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -627,19 +1129,35 @@ export default function SuperAdminDashboard() {
                         </div>
                       </td>
                       <td className="py-4 px-6">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
-                          u.role === 'SUPER_ADMIN' 
-                            ? 'bg-purple-50 text-purple-700 border-purple-200' 
-                            : u.role === 'HOTEL_OWNER'
-                            ? 'bg-blue-50 text-blue-700 border-blue-200'
-                            : 'bg-slate-100 text-slate-700 border-slate-200'
-                        }`}>
-                          {u.role}
-                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {u.assigned_roles && u.assigned_roles.length > 0 ? (
+                            u.assigned_roles.map((r) => (
+                              <span
+                                key={r.id || r.code}
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                                  r.code === 'SUPER_ADMIN' 
+                                    ? 'bg-purple-50 text-purple-700 border-purple-200' 
+                                    : r.code === 'HOTEL_OWNER'
+                                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                    : 'bg-slate-100 text-slate-700 border-slate-200'
+                                }`}
+                              >
+                                {r.name || r.code}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-500">
+                              {u.primary_role || 'STAFF'}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-4 px-6">
                         {u.hotel_name ? (
-                          <span className="font-bold text-slate-800">{u.hotel_name}</span>
+                          <div>
+                            <span className="font-bold text-slate-800 block">{u.hotel_name}</span>
+                            <span className="text-[11px] font-mono text-slate-400">/{u.hotel_slug}</span>
+                          </div>
                         ) : (
                           <span className="text-slate-400 italic">Global Platform Level</span>
                         )}
@@ -649,6 +1167,14 @@ export default function SuperAdminDashboard() {
                           <CheckCircle2 className="w-3.5 h-3.5" /> Active
                         </span>
                       </td>
+                      <td className="py-4 px-6 text-right">
+                        <button
+                          onClick={() => handleOpenUserRoleModal(u)}
+                          className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-indigo-600 font-bold text-xs shadow-sm transition-colors cursor-pointer"
+                        >
+                          Manage Roles
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -657,12 +1183,12 @@ export default function SuperAdminDashboard() {
           </div>
         )}
 
-        {/* Tab 4: AUDIT LOGS */}
+        {/* Tab 5: AUDIT LOGS */}
         {activeTab === 'audit' && (
           <div className="p-8 space-y-6 animate-fade-in">
             <div>
               <h3 className="text-xl font-black text-slate-900">Security & Administrative Audit Trail</h3>
-              <p className="text-xs text-slate-500">Immutable record of logins, property registrations, and tenant boundary enforcement</p>
+              <p className="text-xs text-slate-500">Immutable record of logins, property registrations, role modifications, and tenant boundary enforcement</p>
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -706,7 +1232,7 @@ export default function SuperAdminDashboard() {
           </div>
         )}
 
-        {/* Tab 5: CONSOLIDATED REPORTS */}
+        {/* Tab 6: CONSOLIDATED REPORTS */}
         {activeTab === 'reports' && data && (
           <div className="p-8 space-y-6 animate-fade-in">
             <div className="flex items-center justify-between">
@@ -749,7 +1275,7 @@ export default function SuperAdminDashboard() {
           </div>
         )}
 
-        {/* Tab 6: SETTINGS */}
+        {/* Tab 7: SETTINGS */}
         {activeTab === 'settings' && (
           <div className="p-8 max-w-2xl space-y-6 animate-fade-in">
             <div>
@@ -758,6 +1284,16 @@ export default function SuperAdminDashboard() {
             </div>
 
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                <div>
+                  <h4 className="font-bold text-sm text-slate-900">Dynamic RBAC Permission Resolution</h4>
+                  <p className="text-xs text-slate-500">Multi-role permissions computed via Supabase PostgreSQL tables</p>
+                </div>
+                <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  Active
+                </span>
+              </div>
+
               <div className="flex items-center justify-between pb-4 border-b border-slate-100">
                 <div>
                   <h4 className="font-bold text-sm text-slate-900">Strict Multi-Tenant Verification</h4>
@@ -781,7 +1317,7 @@ export default function SuperAdminDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-bold text-sm text-slate-900">PostgreSQL Cascading Foreign Keys</h4>
-                  <p className="text-xs text-slate-500">hotel_rooms, hotel_bookings, hotel_staff tied to hotel_id</p>
+                  <p className="text-xs text-slate-500">hotel_rooms, hotel_bookings, rbac_user_roles tied with integrity constraints</p>
                 </div>
                 <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
                   Healthy
@@ -791,6 +1327,238 @@ export default function SuperAdminDashboard() {
           </div>
         )}
       </main>
+
+      {/* ── CREATE ROLE MODAL ── */}
+      {showCreateRoleModal && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowCreateRoleModal(false)}>
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Create New Role</h3>
+                <p className="text-xs text-slate-500">Define a new operational role with custom menu access</p>
+              </div>
+              <button onClick={() => setShowCreateRoleModal(false)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 cursor-pointer">✕</button>
+            </div>
+
+            <form onSubmit={handleCreateRole} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Role Unique Code *</label>
+                <input
+                  type="text"
+                  required
+                  value={newRoleForm.code}
+                  onChange={e => setNewRoleForm(prev => ({ ...prev, code: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_') }))}
+                  placeholder="e.g. FRONT_DESK_AGENT"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-xs uppercase focus:outline-none focus:border-indigo-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Role Display Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={newRoleForm.name}
+                  onChange={e => setNewRoleForm(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="e.g. Front Desk Agent"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-indigo-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Description</label>
+                <textarea
+                  rows={3}
+                  value={newRoleForm.description}
+                  onChange={e => setNewRoleForm(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Brief summary of duties and authorized access..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs focus:outline-none focus:border-indigo-600"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-indigo-600/20 transition-all cursor-pointer mt-4"
+              >
+                Create Role
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MANAGE USER ROLES MODAL ── */}
+      {showUserRoleModal && selectedUserForRoles && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowUserRoleModal(false)}>
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Assign Roles</h3>
+                <p className="text-xs text-slate-500">Mapping roles for <span className="font-bold text-indigo-600">{selectedUserForRoles.username}</span></p>
+              </div>
+              <button onClick={() => setShowUserRoleModal(false)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 cursor-pointer">✕</button>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-xs text-slate-500">Select one or more roles. Multiple roles will merge authorized menu permissions.</p>
+
+              <div className="space-y-2 max-h-64 overflow-y-auto p-1">
+                {roles.map(r => {
+                  const isChecked = userRoleIds.includes(r.id);
+                  return (
+                    <label
+                      key={r.id}
+                      className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
+                        isChecked ? 'bg-indigo-50 border-indigo-300' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <div>
+                        <span className="font-bold text-xs text-slate-900 block">{r.name}</span>
+                        <span className="font-mono text-[10px] text-slate-400">{r.code}</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => {
+                          setUserRoleIds(prev =>
+                            isChecked ? prev.filter(id => id !== r.id) : [...prev, r.id]
+                          );
+                        }}
+                        className="w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                      />
+                    </label>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={handleSaveUserRoles}
+                className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-indigo-600/20 transition-all cursor-pointer mt-4"
+              >
+                Save Assigned Roles
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── CREATE USER MODAL ── */}
+      {showCreateUserModal && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowCreateUserModal(false)}>
+          <div className="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Provision User Account</h3>
+                <p className="text-xs text-slate-500">Create user, set hotel scope, and assign RBAC roles</p>
+              </div>
+              <button onClick={() => setShowCreateUserModal(false)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 cursor-pointer">✕</button>
+            </div>
+
+            <form onSubmit={handleCreateUserWithRoles} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Username *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newUserForm.username}
+                    onChange={e => setNewUserForm(prev => ({ ...prev, username: e.target.value }))}
+                    placeholder="e.g. jdoe"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs focus:outline-none focus:border-indigo-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Password *</label>
+                  <input
+                    type="password"
+                    required
+                    value={newUserForm.password}
+                    onChange={e => setNewUserForm(prev => ({ ...prev, password: e.target.value }))}
+                    placeholder="••••••••"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs focus:outline-none focus:border-indigo-600"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Full Name</label>
+                  <input
+                    type="text"
+                    value={newUserForm.fullName}
+                    onChange={e => setNewUserForm(prev => ({ ...prev, fullName: e.target.value }))}
+                    placeholder="John Doe"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs focus:outline-none focus:border-indigo-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={newUserForm.email}
+                    onChange={e => setNewUserForm(prev => ({ ...prev, email: e.target.value }))}
+                    placeholder="john@hotel.com"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs focus:outline-none focus:border-indigo-600"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Hotel Property Scope</label>
+                <select
+                  value={newUserForm.hotelId}
+                  onChange={e => setNewUserForm(prev => ({ ...prev, hotelId: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold focus:outline-none focus:border-indigo-600"
+                >
+                  <option value="">Global Platform (Super Admin Scope)</option>
+                  {hotels.map(h => (
+                    <option key={h.id} value={h.id}>{h.name} (/{h.slug})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Assign Roles *</label>
+                <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-1 border border-slate-200 rounded-xl">
+                  {roles.map(r => {
+                    const isChecked = newUserForm.roleIds.includes(r.id);
+                    return (
+                      <label
+                        key={r.id}
+                        className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer transition-all ${
+                          isChecked ? 'bg-indigo-50 border-indigo-300 font-bold text-indigo-900' : 'bg-white border-slate-200 text-slate-700'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            setNewUserForm(prev => ({
+                              ...prev,
+                              roleIds: isChecked
+                                ? prev.roleIds.filter(id => id !== r.id)
+                                : [...prev.roleIds, r.id]
+                            }));
+                          }}
+                          className="w-3.5 h-3.5 rounded text-indigo-600 border-slate-300 cursor-pointer"
+                        />
+                        <span className="truncate">{r.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-indigo-600/20 transition-all cursor-pointer mt-4"
+              >
+                Provision User & Assign Roles
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ── REGISTER HOTEL MODAL ── */}
       {showAddHotelModal && (

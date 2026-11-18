@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const AuthContext = createContext();
 
@@ -7,7 +7,18 @@ export const useAuth = () => useContext(AuthContext);
 export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(() => localStorage.getItem('auth_token'));
   const [role, setRole] = useState(() => localStorage.getItem('auth_role'));
+  const [roles, setRoles] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('auth_roles') || '[]'); } catch { return []; }
+  });
+  const [permissions, setPermissions] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('auth_permissions') || '{}'); } catch { return {}; }
+  });
+  const [accessibleModules, setAccessibleModules] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('auth_accessible_modules') || '[]'); } catch { return []; }
+  });
+
   const [username, setUsername] = useState(() => localStorage.getItem('auth_username'));
+  const [userId, setUserId] = useState(() => localStorage.getItem('auth_user_id'));
   const [hotelId, setHotelId] = useState(() => localStorage.getItem('auth_hotel_id'));
   const [hotelName, setHotelName] = useState(() => localStorage.getItem('auth_hotel_name'));
   const [hotelSlug, setHotelSlug] = useState(() => localStorage.getItem('auth_hotel_slug'));
@@ -15,6 +26,43 @@ export const AuthProvider = ({ children }) => {
   const [fullName, setFullName] = useState(() => localStorage.getItem('auth_full_name'));
   const [email, setEmail] = useState(() => localStorage.getItem('auth_email'));
   const [loading, setLoading] = useState(false);
+
+  // Sync / refresh profile & dynamic permissions from backend
+  const refreshUser = async () => {
+    const curToken = localStorage.getItem('auth_token');
+    if (!curToken) return;
+    try {
+      const res = await fetch('/api/auth/me', {
+        headers: { 'X-Auth-Token': curToken }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRole(data.role);
+        setRoles(data.roles || [data.role]);
+        setPermissions(data.permissions || {});
+        setAccessibleModules(data.accessibleModules || []);
+        setHotelId(data.hotelId || null);
+        setHotelName(data.hotelName || null);
+        setHotelSlug(data.hotelSlug || null);
+        setHotelCurrency(data.hotelCurrency || 'USD');
+        setFullName(data.fullName || data.username);
+        setEmail(data.email || '');
+
+        localStorage.setItem('auth_role', data.role);
+        localStorage.setItem('auth_roles', JSON.stringify(data.roles || [data.role]));
+        localStorage.setItem('auth_permissions', JSON.stringify(data.permissions || {}));
+        localStorage.setItem('auth_accessible_modules', JSON.stringify(data.accessibleModules || []));
+      }
+    } catch (e) {
+      console.warn('Failed to refresh user profile:', e.message);
+    }
+  };
+
+  useEffect(() => {
+    if (token) {
+      refreshUser();
+    }
+  }, [token]);
 
   const login = async (username, password) => {
     setLoading(true);
@@ -31,7 +79,11 @@ export const AuthProvider = ({ children }) => {
       const data = await res.json();
       localStorage.setItem('auth_token', data.token);
       localStorage.setItem('auth_role', data.role);
+      localStorage.setItem('auth_roles', JSON.stringify(data.roles || [data.role]));
+      localStorage.setItem('auth_permissions', JSON.stringify(data.permissions || {}));
+      localStorage.setItem('auth_accessible_modules', JSON.stringify(data.accessibleModules || []));
       localStorage.setItem('auth_username', data.username);
+      if (data.userId) localStorage.setItem('auth_user_id', data.userId);
       if (data.hotelId) localStorage.setItem('auth_hotel_id', data.hotelId);
       else localStorage.removeItem('auth_hotel_id');
       if (data.hotelName) localStorage.setItem('auth_hotel_name', data.hotelName);
@@ -44,7 +96,11 @@ export const AuthProvider = ({ children }) => {
 
       setToken(data.token);
       setRole(data.role);
+      setRoles(data.roles || [data.role]);
+      setPermissions(data.permissions || {});
+      setAccessibleModules(data.accessibleModules || []);
       setUsername(data.username);
+      setUserId(data.userId || null);
       setHotelId(data.hotelId || null);
       setHotelName(data.hotelName || null);
       setHotelSlug(data.hotelSlug || null);
@@ -69,7 +125,11 @@ export const AuthProvider = ({ children }) => {
     }
     localStorage.removeItem('auth_token');
     localStorage.removeItem('auth_role');
+    localStorage.removeItem('auth_roles');
+    localStorage.removeItem('auth_permissions');
+    localStorage.removeItem('auth_accessible_modules');
     localStorage.removeItem('auth_username');
+    localStorage.removeItem('auth_user_id');
     localStorage.removeItem('auth_hotel_id');
     localStorage.removeItem('auth_hotel_name');
     localStorage.removeItem('auth_hotel_slug');
@@ -79,7 +139,11 @@ export const AuthProvider = ({ children }) => {
 
     setToken(null);
     setRole(null);
+    setRoles([]);
+    setPermissions({});
+    setAccessibleModules([]);
     setUsername(null);
+    setUserId(null);
     setHotelId(null);
     setHotelName(null);
     setHotelSlug(null);
@@ -89,16 +153,41 @@ export const AuthProvider = ({ children }) => {
   };
 
   const isAuthenticated = !!token;
-  const isSuperAdmin = role === 'SUPER_ADMIN';
-  const isHotelOwner = role === 'HOTEL_OWNER';
-  const isManager = role === 'MANAGER';
-  const isWaiter = role === 'WAITER';
+  const isSuperAdmin = role === 'SUPER_ADMIN' || roles.includes('SUPER_ADMIN');
+  const isHotelOwner = role === 'HOTEL_OWNER' || roles.includes('HOTEL_OWNER');
+  const isManager = role === 'MANAGER' || roles.includes('MANAGER');
+  const isWaiter = role === 'WAITER' || roles.includes('STAFF');
   const isKitchen = role === 'KITCHEN';
+
+  /**
+   * Check if the authenticated user has a specific granular permission on a module.
+   * Super Admin always evaluates to true (wildcard).
+   * Otherwise checks role-based permissions matrix fetched from Supabase PostgreSQL.
+   */
+  const hasPermission = (moduleCode, action = 'can_view') => {
+    if (isSuperAdmin) return true;
+    if (!permissions || !permissions[moduleCode]) return false;
+    const mod = permissions[moduleCode];
+    if (mod.can_manage === true) return true;
+    return mod[action] === true;
+  };
+
+  /**
+   * Check if user is allowed to access and see a menu module.
+   */
+  const canAccessModule = (moduleCode) => {
+    if (isSuperAdmin) return true;
+    return hasPermission(moduleCode, 'can_view');
+  };
 
   return (
     <AuthContext.Provider value={{
       token,
+      userId,
       role,
+      roles,
+      permissions,
+      accessibleModules,
       username,
       hotelId,
       hotelName,
@@ -109,12 +198,15 @@ export const AuthProvider = ({ children }) => {
       loading,
       login,
       logout,
+      refreshUser,
       isAuthenticated,
       isSuperAdmin,
       isHotelOwner,
       isManager,
       isWaiter,
-      isKitchen
+      isKitchen,
+      hasPermission,
+      canAccessModule
     }}>
       {children}
     </AuthContext.Provider>

@@ -59,6 +59,14 @@ export default function Home() {
       icon: '⚡',
       color: 'from-amber-500 to-amber-700',
       badge: 'Wizard'
+    },
+    {
+      title: 'Dynamic RBAC System',
+      desc: 'Create roles, assign menu access & granular View/Add/Edit/Delete permissions.',
+      path: '/superadmin?tab=rbac',
+      icon: '🛡️',
+      color: 'from-indigo-600 to-purple-800',
+      badge: 'RBAC Core'
     }
   ];
 

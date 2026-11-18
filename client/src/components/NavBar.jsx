@@ -2,7 +2,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const NavBar = ({ title, statusBadge, hotel }) => {
-  const { isAuthenticated, role, username, logout } = useAuth();
+  const { isAuthenticated, role, roles, username, logout, isSuperAdmin, canAccessModule, accessibleModules } = useAuth();
   const navigate = useNavigate();
 
   const brandInitial = hotel?.name ? hotel.name.trim().charAt(0).toUpperCase() : 'A';
@@ -10,28 +10,41 @@ const NavBar = ({ title, statusBadge, hotel }) => {
   const brandSub = hotel?.name ? 'Hotel & Dining' : 'Dining';
   const primaryColor = hotel?.theme?.primaryColor || '#D97706';
 
-  const roleLinks = {
-    SUPER_ADMIN: [
-      { label: 'Super Admin', path: '/superadmin' },
-      { label: 'Hotel Dashboard', path: '/hotel-dashboard' },
-      { label: 'Restaurant Manager', path: '/manager' },
-      { label: 'Onboard Hotel', path: '/onboarding' },
-    ],
-    HOTEL_OWNER: [
-      { label: 'Hotel Dashboard', path: '/hotel-dashboard' },
-      { label: 'Restaurant Manager', path: '/manager' },
-    ],
-    MANAGER: [
-      { label: 'Manager', path: '/manager' },
-      { label: 'Waiter', path: '/waiter' },
-      { label: 'Kitchen', path: '/kitchen' },
-      { label: 'Onboard Hotel', path: '/onboarding' },
-    ],
-    WAITER: [{ label: 'Waiter', path: '/waiter' }],
-    KITCHEN: [{ label: 'Kitchen', path: '/kitchen' }],
-  };
+  // Build dynamic navigation links driven by database-assigned RBAC permissions
+  let navLinks = [];
 
-  const links = isAuthenticated ? (roleLinks[role] || []) : [];
+  if (isAuthenticated) {
+    if (isSuperAdmin) {
+      navLinks = [
+        { label: 'Super Admin', path: '/superadmin' },
+        { label: 'RBAC Access', path: '/superadmin?tab=rbac' },
+        { label: 'Hotel Dashboard', path: '/hotel-dashboard' },
+        { label: 'Dining POS', path: '/manager' },
+        { label: 'Onboard Hotel', path: '/onboarding' },
+      ];
+    } else {
+      // Dynamic resolution from backend-provided accessibleModules
+      const hasHotelDashboardAccess = canAccessModule('DASHBOARD') || canAccessModule('BOOKINGS') || canAccessModule('ROOMS') || canAccessModule('FINANCIALS');
+      const hasDiningAccess = canAccessModule('DINING_MENU');
+      const hasAdminAccess = canAccessModule('RBAC_ROLES') || canAccessModule('HOTELS');
+
+      if (hasAdminAccess) {
+        navLinks.push({ label: 'Platform Admin', path: '/superadmin' });
+      }
+      if (hasHotelDashboardAccess) {
+        navLinks.push({ label: 'Hotel Dashboard', path: '/hotel-dashboard' });
+      }
+      if (hasDiningAccess) {
+        navLinks.push({ label: 'Dining POS', path: '/manager' });
+      }
+      if (role === 'WAITER' || roles.includes('STAFF')) {
+        navLinks.push({ label: 'Waiter View', path: '/waiter' });
+      }
+      if (role === 'KITCHEN') {
+        navLinks.push({ label: 'Kitchen Display', path: '/kitchen' });
+      }
+    }
+  }
 
   const handleLogout = async () => {
     await logout();
@@ -57,7 +70,7 @@ const NavBar = ({ title, statusBadge, hotel }) => {
             </div>
           </Link>
           <div className="hidden md:flex items-center gap-1">
-            {links.map((link) => (
+            {navLinks.map((link) => (
               <Link key={link.path} to={link.path} className="px-4 py-2 rounded-lg text-sm font-semibold text-cream-muted hover:text-brand hover:bg-brand-light transition-all no-underline">
                 {link.label}
               </Link>
@@ -70,9 +83,14 @@ const NavBar = ({ title, statusBadge, hotel }) => {
           {statusBadge}
           {isAuthenticated ? (
             <div className="flex items-center gap-3">
-              <span className="hidden md:block text-xs font-bold text-cream-dim">
-                {username} <span className="text-brand opacity-70">· {role}</span>
-              </span>
+              <div className="hidden md:flex flex-col items-end">
+                <span className="text-xs font-bold text-cream">
+                  {username}
+                </span>
+                <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">
+                  {roles && roles.length > 0 ? roles.join(', ') : role}
+                </span>
+              </div>
               <button onClick={handleLogout} className="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest text-rose-400 border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500 hover:text-white transition-all cursor-pointer">
                 Logout
               </button>

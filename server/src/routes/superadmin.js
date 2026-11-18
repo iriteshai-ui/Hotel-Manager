@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
 import { multiTenantDb } from '../multiTenantDb.js';
+import { rbacDb } from '../rbacDb.js';
 
 const router = Router();
 
@@ -181,6 +182,185 @@ router.get('/reports', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to generate platform report' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DYNAMIC ROLE-BASED ACCESS CONTROL (RBAC) ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/superadmin/rbac/roles - List all roles with user count and permissions
+router.get('/rbac/roles', async (req, res) => {
+  try {
+    const roles = await rbacDb.getAllRoles();
+    res.json(roles);
+  } catch (err) {
+    console.error('RBAC get roles error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch roles' });
+  }
+});
+
+// POST /api/superadmin/rbac/roles - Create new role with module permissions
+router.post('/rbac/roles', async (req, res) => {
+  try {
+    const { code, name, description, permissions } = req.body;
+    if (!code || !name) {
+      return res.status(400).json({ error: 'Role code and name are required' });
+    }
+
+    const newRole = await rbacDb.createRole({ code, name, description, permissions });
+
+    await multiTenantDb.logAudit(null, req.user.user_id, req.user.username, 'CREATE_RBAC_ROLE', 'RBAC', {
+      roleCode: newRole.code,
+      roleName: newRole.name
+    });
+
+    res.status(201).json(newRole);
+  } catch (err) {
+    console.error('RBAC create role error:', err.message);
+    res.status(400).json({ error: err.message || 'Failed to create role' });
+  }
+});
+
+// PUT /api/superadmin/rbac/roles/:id - Edit role details
+router.put('/rbac/roles/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, description } = req.body;
+    const updated = await rbacDb.updateRole(id, { name, description });
+    if (!updated) return res.status(404).json({ error: 'Role not found' });
+
+    await multiTenantDb.logAudit(null, req.user.user_id, req.user.username, 'UPDATE_RBAC_ROLE', 'RBAC', {
+      roleId: id,
+      name
+    });
+
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update role' });
+  }
+});
+
+// DELETE /api/superadmin/rbac/roles/:id - Delete custom role
+router.delete('/rbac/roles/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await rbacDb.deleteRole(id);
+
+    await multiTenantDb.logAudit(null, req.user.user_id, req.user.username, 'DELETE_RBAC_ROLE', 'RBAC', {
+      roleId: id
+    });
+
+    res.json({ success: true, message: 'Role deleted successfully' });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Failed to delete role' });
+  }
+});
+
+// GET /api/superadmin/rbac/modules - List all system modules / menus
+router.get('/rbac/modules', async (req, res) => {
+  try {
+    const modules = await rbacDb.getAllModules();
+    res.json(modules);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch modules' });
+  }
+});
+
+// GET /api/superadmin/rbac/roles/:id/permissions - Get menu-level permissions for role
+router.get('/rbac/roles/:id/permissions', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const permissions = await rbacDb.getRolePermissions(id);
+    res.json(permissions);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch role permissions' });
+  }
+});
+
+// PUT /api/superadmin/rbac/roles/:id/permissions - Batch update role permissions
+router.put('/rbac/roles/:id/permissions', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { permissions } = req.body;
+    if (!Array.isArray(permissions)) {
+      return res.status(400).json({ error: 'Permissions array is required' });
+    }
+
+    const updated = await rbacDb.updateRolePermissions(id, permissions);
+
+    await multiTenantDb.logAudit(null, req.user.user_id, req.user.username, 'UPDATE_ROLE_PERMISSIONS', 'RBAC', {
+      roleId: id,
+      count: permissions.length
+    });
+
+    res.json({ success: true, permissions: updated });
+  } catch (err) {
+    console.error('Update role permissions error:', err.message);
+    res.status(500).json({ error: 'Failed to update role permissions' });
+  }
+});
+
+// GET /api/superadmin/rbac/users - Users with assigned roles
+router.get('/rbac/users', async (req, res) => {
+  try {
+    const users = await rbacDb.getAllUsersWithRoles();
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch users with roles' });
+  }
+});
+
+// POST /api/superadmin/rbac/users - Create user with assigned roles
+router.post('/rbac/users', async (req, res) => {
+  try {
+    const { username, password, roleIds = [], hotelId, fullName, email } = req.body;
+    if (!username || !password || !Array.isArray(roleIds) || roleIds.length === 0) {
+      return res.status(400).json({ error: 'Username, password and at least one role are required' });
+    }
+
+    const newUser = await rbacDb.createUserWithRoles({
+      username,
+      password,
+      roleIds,
+      hotelId: hotelId || null,
+      fullName: fullName || '',
+      email: email || ''
+    });
+
+    await multiTenantDb.logAudit(hotelId || null, req.user.user_id, req.user.username, 'CREATE_USER_WITH_ROLES', 'USERS', {
+      createdUserId: newUser.id,
+      username: newUser.username,
+      rolesAssigned: roleIds
+    });
+
+    res.status(201).json(newUser);
+  } catch (err) {
+    console.error('Create user with roles error:', err.message);
+    res.status(400).json({ error: err.message || 'Failed to create user' });
+  }
+});
+
+// PUT /api/superadmin/rbac/users/:id/roles - Update user's assigned roles
+router.put('/rbac/users/:id/roles', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { roleIds } = req.body;
+    if (!Array.isArray(roleIds)) {
+      return res.status(400).json({ error: 'Array of roleIds required' });
+    }
+
+    await rbacDb.assignUserRoles(id, roleIds);
+
+    await multiTenantDb.logAudit(null, req.user.user_id, req.user.username, 'UPDATE_USER_ROLES', 'RBAC', {
+      userId: id,
+      newRoleIds: roleIds
+    });
+
+    res.json({ success: true, message: 'User roles updated successfully' });
+  } catch (err) {
+    console.error('Assign user roles error:', err.message);
+    res.status(500).json({ error: 'Failed to assign user roles' });
   }
 });
 

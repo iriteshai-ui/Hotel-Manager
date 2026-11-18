@@ -12,20 +12,36 @@ import HotelOnboarding from './pages/HotelOnboarding';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import HotelOwnerDashboard from './pages/HotelOwnerDashboard';
 
-function ProtectedRoute({ children, roles }) {
-  const { isAuthenticated, role } = useAuth();
+function ProtectedRoute({ children, roles = [], module = null }) {
+  const { isAuthenticated, role, roles: userRoles, isSuperAdmin, canAccessModule } = useAuth();
   const location = useLocation();
+
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
-  if (roles && !roles.includes(role)) {
-    if (role === 'SUPER_ADMIN') return <Navigate to="/superadmin" replace />;
-    if (role === 'HOTEL_OWNER') return <Navigate to="/hotel-dashboard" replace />;
-    if (role === 'MANAGER') return <Navigate to="/manager" replace />;
-    if (role === 'WAITER') return <Navigate to="/waiter" replace />;
-    if (role === 'KITCHEN') return <Navigate to="/kitchen" replace />;
+
+  // Super Admin has universal wildcard access
+  if (isSuperAdmin) {
+    return children;
+  }
+
+  // If module check specified, verify dynamic RBAC permissions from Supabase
+  if (module && !canAccessModule(module)) {
     return <Navigate to="/" replace />;
   }
+
+  // If specific role list specified, verify user has at least one of those roles
+  if (roles.length > 0) {
+    const hasRole = roles.includes(role) || (userRoles && userRoles.some(r => roles.includes(r)));
+    if (!hasRole) {
+      if (role === 'HOTEL_OWNER') return <Navigate to="/hotel-dashboard" replace />;
+      if (role === 'MANAGER') return <Navigate to="/manager" replace />;
+      if (role === 'WAITER') return <Navigate to="/waiter" replace />;
+      if (role === 'KITCHEN') return <Navigate to="/kitchen" replace />;
+      return <Navigate to="/" replace />;
+    }
+  }
+
   return children;
 }
 
@@ -40,16 +56,16 @@ function AppRoutes() {
         <ProtectedRoute roles={['SUPER_ADMIN']}><SuperAdminDashboard /></ProtectedRoute>
       } />
       <Route path="/hotel-dashboard" element={
-        <ProtectedRoute roles={['HOTEL_OWNER', 'SUPER_ADMIN']}><HotelOwnerDashboard /></ProtectedRoute>
+        <ProtectedRoute roles={['HOTEL_OWNER', 'MANAGER', 'RECEPTIONIST', 'ACCOUNTANT', 'SUPER_ADMIN']}><HotelOwnerDashboard /></ProtectedRoute>
       } />
       <Route path="/kitchen" element={
         <ProtectedRoute roles={['KITCHEN', 'MANAGER', 'SUPER_ADMIN']}><Kitchen /></ProtectedRoute>
       } />
       <Route path="/waiter" element={
-        <ProtectedRoute roles={['WAITER', 'MANAGER', 'SUPER_ADMIN']}><Waiter /></ProtectedRoute>
+        <ProtectedRoute roles={['WAITER', 'MANAGER', 'STAFF', 'SUPER_ADMIN']}><Waiter /></ProtectedRoute>
       } />
       <Route path="/manager" element={
-        <ProtectedRoute roles={['MANAGER', 'SUPER_ADMIN']}><Manager /></ProtectedRoute>
+        <ProtectedRoute roles={['MANAGER', 'HOTEL_OWNER', 'SUPER_ADMIN']}><Manager /></ProtectedRoute>
       } />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
