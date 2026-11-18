@@ -1,9 +1,14 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-const NavBar = ({ title, statusBadge }) => {
+const NavBar = ({ title, statusBadge, hotel }) => {
   const { isAuthenticated, role, username, logout } = useAuth();
   const navigate = useNavigate();
+
+  const brandInitial = hotel?.name ? hotel.name.trim().charAt(0).toUpperCase() : 'A';
+  const brandName = hotel?.name ? hotel.name.toUpperCase() : 'AURA';
+  const brandSub = hotel?.name ? 'Hotel & Dining' : 'Dining';
+  const primaryColor = hotel?.theme?.primaryColor || '#D97706';
 
   const roleLinks = {
     MANAGER: [
@@ -27,13 +32,18 @@ const NavBar = ({ title, statusBadge }) => {
     <nav className="sticky top-0 z-[100] w-full border-b border-charcoal-border bg-charcoal/80 backdrop-blur-xl">
       <div className="max-w-[1400px] mx-auto px-6 h-20 flex items-center justify-between text-cream">
         <div className="flex items-center gap-8">
-          <Link to="/" className="flex items-center gap-2 group no-underline">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand to-brand-hover flex items-center justify-center shadow-lg shadow-brand/20 group-hover:scale-110 transition-transform">
-              <span className="text-white text-xl font-black italic">A</span>
+          <Link to={hotel?.slug ? `/menu?hotel=${hotel.slug}` : "/"} className="flex items-center gap-2 group no-underline">
+            <div 
+              style={{ backgroundColor: primaryColor }}
+              className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg shadow-brand/20 group-hover:scale-110 transition-transform"
+            >
+              <span className="text-white text-xl font-black italic">{brandInitial}</span>
             </div>
             <div className="flex flex-col">
-              <span className="text-xl font-black tracking-tighter text-cream leading-none">AURA</span>
-              <span className="text-[10px] font-bold tracking-[0.2em] text-brand uppercase leading-none mt-0.5">Dining</span>
+              <span className="text-xl font-black tracking-tighter text-cream leading-none">{brandName}</span>
+              <span style={{ color: primaryColor }} className="text-[10px] font-bold tracking-[0.2em] uppercase leading-none mt-0.5">
+                {brandSub}
+              </span>
             </div>
           </Link>
           <div className="hidden md:flex items-center gap-1">

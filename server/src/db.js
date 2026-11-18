@@ -84,6 +84,7 @@ export async function initDb() {
         description TEXT,
         image_url VARCHAR(255),
         is_available BOOLEAN DEFAULT true,
+        is_bestseller BOOLEAN DEFAULT false,
         dietary_tags TEXT[] DEFAULT '{}',
         hotel_id UUID
       );
@@ -103,6 +104,11 @@ export async function initDb() {
         role VARCHAR(50) NOT NULL,
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
+
+      ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS is_available BOOLEAN DEFAULT true;
+      ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS is_bestseller BOOLEAN DEFAULT false;
+      ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS dietary_tags TEXT[] DEFAULT '{}';
+      ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS hotel_id UUID;
     `);
 
     // 2. Seed Users
@@ -191,6 +197,7 @@ function formatMenuItem(row) {
     description: row.description,
     imageUrl: row.image_url,
     isAvailable: row.is_available !== false,
+    isBestseller: row.is_bestseller === true,
     dietaryTags: row.dietary_tags || [],
     hotelId: row.hotel_id || null
   };
@@ -344,9 +351,10 @@ export const db = {
     for (const item of items) {
       const id = item.id || crypto.randomUUID();
       const tags = Array.isArray(item.dietaryTags) ? item.dietaryTags : [];
+      const isBestseller = item.isBestseller === true || item.bestseller === true;
       const res = await pool.query(
-        `INSERT INTO menu_items (id, name, price, category, description, image_url, is_available, dietary_tags, hotel_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `INSERT INTO menu_items (id, name, price, category, description, image_url, is_available, is_bestseller, dietary_tags, hotel_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING *;`,
         [
           id,
@@ -356,6 +364,7 @@ export const db = {
           item.description || '',
           item.imageUrl || '',
           item.isAvailable !== false,
+          isBestseller,
           tags,
           hotelId || null
         ]
@@ -363,6 +372,98 @@ export const db = {
       inserted.push(formatMenuItem(res.rows[0]));
     }
     return inserted;
+  },
+
+  async getMenuItemsByHotel(hotelId) {
+    const res = await pool.query(
+      'SELECT * FROM menu_items WHERE hotel_id = $1 ORDER BY is_bestseller DESC, category, name;',
+      [hotelId]
+    );
+    return res.rows.map(formatMenuItem);
+  },
+
+  async addHotelMenuItem(hotelId, item) {
+    const id = item.id || crypto.randomUUID();
+    const tags = Array.isArray(item.dietaryTags) ? item.dietaryTags : [];
+    const isBestseller = item.isBestseller === true || item.bestseller === true;
+    const res = await pool.query(
+      `INSERT INTO menu_items (id, name, price, category, description, image_url, is_available, is_bestseller, dietary_tags, hotel_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING *;`,
+      [
+        id,
+        item.name,
+        parseFloat(item.price) || 0,
+        item.category || 'Mains',
+        item.description || '',
+        item.imageUrl || '',
+        item.isAvailable !== false,
+        isBestseller,
+        tags,
+        hotelId
+      ]
+    );
+    return formatMenuItem(res.rows[0]);
+  },
+
+  async updateHotelMenuItem(hotelId, itemId, updates) {
+    const fields = [];
+    const values = [];
+    let idx = 1;
+
+    if (updates.name !== undefined) {
+      fields.push(`name = $${idx++}`);
+      values.push(updates.name);
+    }
+    if (updates.price !== undefined) {
+      fields.push(`price = $${idx++}`);
+      values.push(parseFloat(updates.price) || 0);
+    }
+    if (updates.category !== undefined) {
+      fields.push(`category = $${idx++}`);
+      values.push(updates.category);
+    }
+    if (updates.description !== undefined) {
+      fields.push(`description = $${idx++}`);
+      values.push(updates.description);
+    }
+    if (updates.imageUrl !== undefined) {
+      fields.push(`image_url = $${idx++}`);
+      values.push(updates.imageUrl);
+    }
+    if (updates.isAvailable !== undefined) {
+      fields.push(`is_available = $${idx++}`);
+      values.push(updates.isAvailable);
+    }
+    if (updates.isBestseller !== undefined) {
+      fields.push(`is_bestseller = $${idx++}`);
+      values.push(updates.isBestseller);
+    }
+    if (updates.dietaryTags !== undefined) {
+      fields.push(`dietary_tags = $${idx++}`);
+      values.push(Array.isArray(updates.dietaryTags) ? updates.dietaryTags : []);
+    }
+
+    if (fields.length === 0) return null;
+
+    values.push(itemId);
+    values.push(hotelId);
+    const sql = `UPDATE menu_items SET ${fields.join(', ')} WHERE id = $${idx++} AND hotel_id = $${idx} RETURNING *;`;
+    const res = await pool.query(sql, values);
+    return formatMenuItem(res.rows[0]);
+  },
+
+  async deleteHotelMenuItem(hotelId, itemId) {
+    const res = await pool.query('DELETE FROM menu_items WHERE id = $1 AND hotel_id = $2 RETURNING *;', [itemId, hotelId]);
+    return res.rows.length > 0;
+  },
+
+  async toggleBestseller(hotelId, itemId) {
+    const res = await pool.query(
+      'UPDATE menu_items SET is_bestseller = NOT COALESCE(is_bestseller, false) WHERE id = $1 AND hotel_id = $2 RETURNING *;',
+      [itemId, hotelId]
+    );
+    return formatMenuItem(res.rows[0]);
   },
 
   // Orders

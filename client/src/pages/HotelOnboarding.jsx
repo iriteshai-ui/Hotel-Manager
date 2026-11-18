@@ -51,7 +51,8 @@ const SAMPLE_STARTER_MENU = [
     price: 18,
     description: 'Creamy artisanal burrata with black truffle shavings on grilled sourdough.',
     dietaryTags: ['Vegetarian', 'Chef Special'],
-    isAvailable: true
+    isAvailable: true,
+    isBestseller: true
   },
   {
     id: 'sample-2',
@@ -60,7 +61,8 @@ const SAMPLE_STARTER_MENU = [
     price: 54,
     description: 'Prime grade cut grilled over binchotan charcoal, served with roasted bone marrow jus.',
     dietaryTags: ['Halal', 'Chef Special'],
-    isAvailable: true
+    isAvailable: true,
+    isBestseller: true
   },
   {
     id: 'sample-3',
@@ -69,7 +71,8 @@ const SAMPLE_STARTER_MENU = [
     price: 28,
     description: 'Acquerello carnaroli rice with porcini broth, parmesan foam, and fresh herbs.',
     dietaryTags: ['Vegetarian', 'Gluten-Free'],
-    isAvailable: true
+    isAvailable: true,
+    isBestseller: false
   },
   {
     id: 'sample-4',
@@ -78,7 +81,8 @@ const SAMPLE_STARTER_MENU = [
     price: 16,
     description: 'Warm French soufflé with Grand Marnier anglaise and dark chocolate drizzle.',
     dietaryTags: ['Vegetarian'],
-    isAvailable: true
+    isAvailable: true,
+    isBestseller: true
   },
   {
     id: 'sample-5',
@@ -87,7 +91,8 @@ const SAMPLE_STARTER_MENU = [
     price: 19,
     description: 'Vodka infused with organic vanilla, fresh single-origin espresso, and 24k gold leaf.',
     dietaryTags: ['Vegan'],
-    isAvailable: true
+    isAvailable: true,
+    isBestseller: false
   },
   {
     id: 'sample-6',
@@ -96,7 +101,8 @@ const SAMPLE_STARTER_MENU = [
     price: 12,
     description: 'Hand-cut russet potatoes tossed with white truffle oil, sea salt, and aged pecorino.',
     dietaryTags: ['Vegetarian', 'Gluten-Free'],
-    isAvailable: true
+    isAvailable: true,
+    isBestseller: false
   }
 ];
 
@@ -137,7 +143,8 @@ export default function HotelOnboarding() {
     price: '',
     description: '',
     dietaryTags: [],
-    isAvailable: true
+    isAvailable: true,
+    isBestseller: false
   });
 
   const showToast = (text, type = 'success') => {
@@ -230,7 +237,8 @@ export default function HotelOnboarding() {
       price: '',
       description: '',
       dietaryTags: [],
-      isAvailable: true
+      isAvailable: true,
+      isBestseller: false
     });
   };
 
@@ -242,8 +250,20 @@ export default function HotelOnboarding() {
       price: item.price.toString(),
       description: item.description,
       dietaryTags: [...item.dietaryTags],
-      isAvailable: item.isAvailable
+      isAvailable: item.isAvailable,
+      isBestseller: item.isBestseller === true
     });
+  };
+
+  const toggleBestsellerItem = (id) => {
+    setMenuItems(prev => prev.map(item => {
+      if (item.id === id) {
+        const nextState = !item.isBestseller;
+        showToast(nextState ? `"${item.name}" pinned to Quick-Add Bestsellers` : `"${item.name}" unpinned from Bestsellers`);
+        return { ...item, isBestseller: nextState };
+      }
+      return item;
+    }));
   };
 
   const handleDeleteItem = (id) => {
@@ -256,7 +276,8 @@ export default function HotelOnboarding() {
         price: '',
         description: '',
         dietaryTags: [],
-        isAvailable: true
+        isAvailable: true,
+        isBestseller: false
       });
     }
     showToast('Item removed from menu');
@@ -847,6 +868,27 @@ export default function HotelOnboarding() {
                   </button>
                 </div>
 
+                {/* Quick-Add Bestseller Pin Toggle */}
+                <div className="flex items-center justify-between p-3 rounded-xl bg-charcoal border border-amber-500/30">
+                  <div>
+                    <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                      <span>⭐</span> Pin as Bestseller / Quick-Add
+                    </span>
+                    <span className="text-[10px] text-cream-dim">Featured at the top of guest menu for fast repeat reordering</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setNewItemForm(prev => ({ ...prev, isBestseller: !prev.isBestseller }))}
+                    className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                      newItemForm.isBestseller ? 'bg-amber-500' : 'bg-charcoal-border'
+                    }`}
+                  >
+                    <div className={`w-4 h-4 rounded-full bg-white transition-transform absolute top-1 ${
+                      newItemForm.isBestseller ? 'left-6' : 'left-1'
+                    }`} />
+                  </button>
+                </div>
+
                 <button
                   type="submit"
                   className="w-full py-3 rounded-xl bg-brand text-charcoal font-black text-xs uppercase tracking-wider hover:bg-brand-hover transition-all shadow-md shadow-brand/20 flex items-center justify-center gap-2 cursor-pointer"
@@ -927,6 +969,11 @@ export default function HotelOnboarding() {
                             {item.category}
                           </span>
                           <h4 className="font-bold text-cream text-sm truncate">{item.name}</h4>
+                          {item.isBestseller && (
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                              ⭐ Bestseller
+                            </span>
+                          )}
                           {!item.isAvailable && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20">
                               Unavailable
@@ -963,6 +1010,19 @@ export default function HotelOnboarding() {
                         </span>
 
                         <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => toggleBestsellerItem(item.id)}
+                            title={item.isBestseller ? 'Unpin from Bestsellers' : 'Pin as Quick-Add Bestseller'}
+                            className={`p-2 rounded-lg text-xs border transition-colors cursor-pointer flex items-center gap-1 font-bold ${
+                              item.isBestseller
+                                ? 'bg-amber-500/20 border-amber-500/40 text-amber-300 hover:bg-amber-500/30'
+                                : 'bg-charcoal border-charcoal-border text-cream-dim hover:text-amber-400'
+                            }`}
+                          >
+                            <span>⭐</span>
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => handleToggleAvailable(item.id)}

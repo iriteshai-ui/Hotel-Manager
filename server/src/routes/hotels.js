@@ -14,7 +14,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET hotel by slug + its menu items
+// GET hotel by slug + its isolated menu items
 router.get('/:slug', async (req, res) => {
   try {
     const { slug } = req.params;
@@ -23,29 +23,108 @@ router.get('/:slug', async (req, res) => {
       return res.status(404).json({ error: 'Hotel not found' });
     }
 
-    // Fetch menu items for this hotel (or general menu items if none assigned)
-    const itemsRes = await pool.query(
-      'SELECT * FROM menu_items WHERE hotel_id = $1 OR hotel_id IS NULL ORDER BY category, name;',
-      [hotel.id]
-    );
+    // Strict multi-tenant isolation: fetch only this hotel's menu items
+    const menuItems = await db.getMenuItemsByHotel(hotel.id);
 
     res.json({
       hotel,
-      menuItems: itemsRes.rows.map(row => ({
-        id: row.id,
-        name: row.name,
-        price: parseFloat(row.price),
-        category: row.category,
-        description: row.description,
-        imageUrl: row.image_url,
-        isAvailable: row.is_available !== false,
-        dietaryTags: row.dietary_tags || [],
-        hotelId: row.hotel_id
-      }))
+      menuItems
     });
   } catch (err) {
     console.error('Error fetching hotel by slug:', err.message);
     res.status(500).json({ error: 'Failed to fetch hotel details' });
+  }
+});
+
+// GET /api/hotels/:slug/menu - Hotel Owner: Get all items for own hotel
+router.get('/:slug/menu', async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const hotel = await db.getHotelBySlug(slug);
+    if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
+
+    const items = await db.getMenuItemsByHotel(hotel.id);
+    res.json({ hotel, items });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch menu items' });
+  }
+});
+
+// POST /api/hotels/:slug/menu - Hotel Owner: Add menu item
+router.post('/:slug/menu', async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const hotel = await db.getHotelBySlug(slug);
+    if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
+
+    const { name, category, price, description, isAvailable, isBestseller, dietaryTags, imageUrl } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Item name is required' });
+    const numPrice = parseFloat(price);
+    if (isNaN(numPrice) || numPrice <= 0) return res.status(400).json({ error: 'Valid positive price is required' });
+
+    const item = await db.addHotelMenuItem(hotel.id, {
+      name: name.trim(),
+      category: category || 'Mains',
+      price: numPrice,
+      description: description || '',
+      isAvailable: isAvailable !== false,
+      isBestseller: isBestseller === true,
+      dietaryTags: Array.isArray(dietaryTags) ? dietaryTags : [],
+      imageUrl: imageUrl || ''
+    });
+
+    res.status(201).json(item);
+  } catch (err) {
+    console.error('Add menu item error:', err.message);
+    res.status(500).json({ error: 'Failed to add menu item' });
+  }
+});
+
+// PUT /api/hotels/:slug/menu/:itemId - Hotel Owner: Update item
+router.put('/:slug/menu/:itemId', async (req, res) => {
+  try {
+    const { slug, itemId } = req.params;
+    const hotel = await db.getHotelBySlug(slug);
+    if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
+
+    const updated = await db.updateHotelMenuItem(hotel.id, itemId, req.body);
+    if (!updated) return res.status(404).json({ error: 'Menu item not found' });
+
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update menu item' });
+  }
+});
+
+// DELETE /api/hotels/:slug/menu/:itemId - Hotel Owner: Delete item
+router.delete('/:slug/menu/:itemId', async (req, res) => {
+  try {
+    const { slug, itemId } = req.params;
+    const hotel = await db.getHotelBySlug(slug);
+    if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
+
+    const deleted = await db.deleteHotelMenuItem(hotel.id, itemId);
+    if (!deleted) return res.status(404).json({ error: 'Menu item not found' });
+
+    res.json({ success: true, message: 'Item deleted' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete menu item' });
+  }
+});
+
+// PATCH /api/hotels/:slug/menu/:itemId/bestseller - Hotel Owner: Toggle Quick-Add / Bestseller Pin
+router.patch('/:slug/menu/:itemId/bestseller', async (req, res) => {
+  try {
+    const { slug, itemId } = req.params;
+    const hotel = await db.getHotelBySlug(slug);
+    if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
+
+    const updated = await db.toggleBestseller(hotel.id, itemId);
+    if (!updated) return res.status(404).json({ error: 'Menu item not found' });
+
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to toggle bestseller' });
   }
 });
 
