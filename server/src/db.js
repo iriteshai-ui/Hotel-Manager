@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { initMultiTenantSchema } from './multiTenantDb.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -151,6 +152,9 @@ export async function initDb() {
       console.log('✓ Seeded 15 menu items in Supabase');
     }
 
+    // 5. Initialize Multi-Tenant Hotel Management Schema & Seed Data
+    await initMultiTenantSchema();
+
     console.log('✓ Connected and synchronized with Supabase PostgreSQL');
   } finally {
     client.release();
@@ -222,7 +226,11 @@ export const db = {
   // Auth & Users
   async findUser(username, password) {
     const res = await pool.query(
-      'SELECT id, username, password, role FROM app_users WHERE username = $1 AND password = $2;',
+      `SELECT u.id, u.username, u.password, u.role, u.hotel_id, u.full_name, u.email,
+              h.name as hotel_name, h.slug as hotel_slug, h.currency as hotel_currency
+       FROM app_users u
+       LEFT JOIN hotels h ON u.hotel_id = h.id
+       WHERE u.username = $1 AND u.password = $2;`,
       [username, password]
     );
     return res.rows[0] || null;
@@ -231,8 +239,8 @@ export const db = {
   async createToken(user) {
     const token = crypto.randomUUID();
     await pool.query(
-      'INSERT INTO auth_tokens (token, username, role) VALUES ($1, $2, $3);',
-      [token, user.username, user.role]
+      'INSERT INTO auth_tokens (token, username, role, hotel_id, user_id) VALUES ($1, $2, $3, $4, $5);',
+      [token, user.username, user.role, user.hotel_id || null, user.id || null]
     );
     return token;
   },
@@ -240,7 +248,15 @@ export const db = {
   async getUserByToken(token) {
     if (!token) return null;
     const res = await pool.query(
-      'SELECT username, role FROM auth_tokens WHERE token = $1;',
+      `SELECT t.username, t.role, 
+              COALESCE(t.hotel_id, u.hotel_id) as hotel_id, 
+              COALESCE(t.user_id, u.id) as user_id,
+              u.full_name, u.email,
+              h.name as hotel_name, h.slug as hotel_slug, h.currency as hotel_currency
+       FROM auth_tokens t
+       LEFT JOIN app_users u ON t.user_id = u.id OR t.username = u.username
+       LEFT JOIN hotels h ON COALESCE(t.hotel_id, u.hotel_id) = h.id
+       WHERE t.token = $1;`,
       [token]
     );
     return res.rows[0] || null;

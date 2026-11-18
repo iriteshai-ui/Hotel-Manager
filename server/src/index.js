@@ -15,6 +15,8 @@ import orderRoutes from './routes/orders.js';
 import insightsRoutes from './routes/insights.js';
 import menuRoutes from './routes/menu.js';
 import hotelsRoutes from './routes/hotels.js';
+import superAdminRoutes from './routes/superadmin.js';
+import hotelOwnerRoutes from './routes/hotelOwner.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,6 +45,8 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/insights', insightsRoutes);
 app.use('/api/menu', menuRoutes);
 app.use('/api/hotels', hotelsRoutes);
+app.use('/api/superadmin', superAdminRoutes);
+app.use('/api/hotel-owner', hotelOwnerRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'UP', database: 'supabase-postgresql', timestamp: new Date().toISOString() });

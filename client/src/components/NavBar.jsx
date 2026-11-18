@@ -11,6 +11,16 @@ const NavBar = ({ title, statusBadge, hotel }) => {
   const primaryColor = hotel?.theme?.primaryColor || '#D97706';
 
   const roleLinks = {
+    SUPER_ADMIN: [
+      { label: 'Super Admin', path: '/superadmin' },
+      { label: 'Hotel Dashboard', path: '/hotel-dashboard' },
+      { label: 'Restaurant Manager', path: '/manager' },
+      { label: 'Onboard Hotel', path: '/onboarding' },
+    ],
+    HOTEL_OWNER: [
+      { label: 'Hotel Dashboard', path: '/hotel-dashboard' },
+      { label: 'Restaurant Manager', path: '/manager' },
+    ],
     MANAGER: [
       { label: 'Manager', path: '/manager' },
       { label: 'Waiter', path: '/waiter' },

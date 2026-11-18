@@ -15,7 +15,13 @@ router.post('/login', async (req, res) => {
     res.json({
       token,
       role: user.role,
-      username: user.username
+      username: user.username,
+      hotelId: user.hotel_id || null,
+      hotelName: user.hotel_name || null,
+      hotelSlug: user.hotel_slug || null,
+      hotelCurrency: user.hotel_currency || 'USD',
+      fullName: user.full_name || user.username,
+      email: user.email || ''
     });
   } catch (err) {
     console.error('Login error:', err.message);
@@ -45,7 +51,13 @@ router.get('/me', async (req, res) => {
     }
     res.json({
       username: user.username,
-      role: user.role
+      role: user.role,
+      hotelId: user.hotel_id || null,
+      hotelName: user.hotel_name || null,
+      hotelSlug: user.hotel_slug || null,
+      hotelCurrency: user.hotel_currency || 'USD',
+      fullName: user.full_name || user.username,
+      email: user.email || ''
     });
   } catch (err) {
     console.error('Get me error:', err.message);

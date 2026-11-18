@@ -18,13 +18,20 @@ export default function Login() {
     const result = await login(username, password);
     if (result.success) {
       const role = result.role;
-      if (role === 'MANAGER') navigate('/manager', { replace: true });
+      if (role === 'SUPER_ADMIN') navigate('/superadmin', { replace: true });
+      else if (role === 'HOTEL_OWNER') navigate('/hotel-dashboard', { replace: true });
+      else if (role === 'MANAGER') navigate('/manager', { replace: true });
       else if (role === 'WAITER') navigate('/waiter', { replace: true });
       else if (role === 'KITCHEN') navigate('/kitchen', { replace: true });
       else navigate(from, { replace: true });
     } else {
-      setError('Invalid username or password');
+      setError(result.error || 'Invalid username or password');
     }
+  };
+
+  const handleQuickLogin = (u, p) => {
+    setUsername(u);
+    setPassword(p);
   };
 
   return (
@@ -78,11 +85,45 @@ export default function Login() {
         </form>
 
         <div className="mt-6 p-4 rounded-2xl bg-charcoal-light/50 border border-charcoal-border/50">
-          <p className="text-xs font-black uppercase tracking-widest text-cream-dim mb-3 text-center">Default Credentials</p>
-          <div className="space-y-1 text-xs font-medium text-cream-muted">
-            <div className="flex justify-between"><span>Manager:</span><span className="font-mono text-brand">admin / admin123</span></div>
-            <div className="flex justify-between"><span>Waiter:</span><span className="font-mono text-brand">waiter / waiter123</span></div>
-            <div className="flex justify-between"><span>Kitchen:</span><span className="font-mono text-brand">kitchen / kitchen123</span></div>
+          <p className="text-[10px] font-black uppercase tracking-widest text-cream-dim mb-3 text-center">
+            One-Click Multi-Tenant Demo Logins
+          </p>
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('superadmin', 'super123')}
+              className="w-full px-3 py-2 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-300 hover:bg-purple-500/20 text-xs font-bold transition-all flex items-center justify-between cursor-pointer"
+            >
+              <span className="flex items-center gap-1.5">👑 Super Admin</span>
+              <span className="font-mono text-[11px] opacity-80">superadmin / super123</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('owner_hotela', 'password123')}
+              className="w-full px-3 py-2 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-300 hover:bg-blue-500/20 text-xs font-bold transition-all flex items-center justify-between cursor-pointer"
+            >
+              <span className="flex items-center gap-1.5">🏨 Hotel A (Grand Horizon)</span>
+              <span className="font-mono text-[11px] opacity-80">owner_hotela / pwd123</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('owner_hotelb', 'password123')}
+              className="w-full px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 text-xs font-bold transition-all flex items-center justify-between cursor-pointer"
+            >
+              <span className="flex items-center gap-1.5">🌴 Hotel B (Royal Palms)</span>
+              <span className="font-mono text-[11px] opacity-80">owner_hotelb / pwd123</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('admin', 'admin123')}
+              className="w-full px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 text-xs font-bold transition-all flex items-center justify-between cursor-pointer"
+            >
+              <span className="flex items-center gap-1.5">📊 Restaurant Manager</span>
+              <span className="font-mono text-[11px] opacity-80">admin / admin123</span>
+            </button>
           </div>
         </div>
       </div>

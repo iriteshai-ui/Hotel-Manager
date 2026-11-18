@@ -5,6 +5,22 @@ import NavBar from '../components/NavBar';
 export default function Home() {
   const dashboards = [
     {
+      title: 'Super Admin Console',
+      desc: 'Platform-wide oversight, cross-hotel metrics & audit logs.',
+      path: '/superadmin',
+      icon: '👑',
+      color: 'from-purple-600 to-indigo-700',
+      badge: 'Platform Owner'
+    },
+    {
+      title: 'Hotel Owner Dashboard',
+      desc: 'Isolated property KPIs, room availability, bookings & ledger.',
+      path: '/hotel-dashboard',
+      icon: '🏨',
+      color: 'from-blue-600 to-cyan-700',
+      badge: 'Hotel Owner'
+    },
+    {
       title: 'Customer Menu',
       desc: 'Seamless ordering experience for your guests.',
       path: '/menu',
@@ -30,7 +46,7 @@ export default function Home() {
     },
     {
       title: 'Management',
-      desc: 'Oversee operations, tables, and analytics.',
+      desc: 'Oversee operations, tables, and dining analytics.',
       path: '/manager',
       icon: '📊',
       color: 'from-blue-500 to-indigo-700',
@@ -40,9 +56,9 @@ export default function Home() {
       title: 'Property Onboarding',
       desc: 'Register hotel tenants, customize theme branding & build menus.',
       path: '/onboarding',
-      icon: '🏨',
+      icon: '⚡',
       color: 'from-amber-500 to-amber-700',
-      badge: 'Super Admin'
+      badge: 'Wizard'
     }
   ];
 
