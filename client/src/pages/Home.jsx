@@ -6,15 +6,15 @@ export default function Home() {
   const dashboards = [
     {
       title: 'Super Admin Console',
-      desc: 'Platform-wide oversight, cross-hotel metrics & audit logs.',
+      desc: 'Platform-wide oversight, cross-hotel metrics, tenant approvals & audit logs.',
       path: '/superadmin',
       icon: '👑',
       color: 'from-purple-600 to-indigo-700',
       badge: 'Platform Owner'
     },
     {
-      title: 'Hotel Owner Dashboard',
-      desc: 'Isolated property KPIs, room availability, bookings & ledger.',
+      title: 'Hotel & Restaurant Owner',
+      desc: 'Rooms, bookings, dining tables, kitchen orders & ledger for your property.',
       path: '/hotel-dashboard',
       icon: '🏨',
       color: 'from-blue-600 to-cyan-700',
@@ -22,54 +22,54 @@ export default function Home() {
     },
     {
       title: 'Hotel Lay Bhari Menu',
-      desc: 'Browse authentic 98-item menu with Maharashtrian specialties & bestsellers.',
+      desc: 'Browse authentic 98-item Maharashtrian & North Indian specialties with bestsellers.',
       path: '/menu?hotel=laybhari',
       icon: '🍛',
       color: 'from-amber-600 to-orange-700',
       badge: 'Lay Bhari (INR ₹)'
     },
     {
-      title: 'Customer Menu',
-      desc: 'Seamless ordering experience for your guests.',
+      title: 'Customer QR Menu',
+      desc: 'Instant contactless ordering experience for dine-in tables & hotel guests.',
       path: '/menu',
       icon: '🍽️',
       color: 'from-brand to-[#926c15]',
       badge: 'Guest Portal'
     },
     {
-      title: 'Kitchen Display',
-      desc: 'Real-time order management for the culinary team.',
+      title: 'Kitchen Display (KDS)',
+      desc: 'Real-time order ticket management and preparation workflow for chefs.',
       path: '/kitchen',
       icon: '👨‍🍳',
       color: 'from-rose-500 to-rose-700',
-      badge: 'Live'
+      badge: 'Live KDS'
     },
     {
-      title: 'Waiter Dashboard',
-      desc: 'Coordinate service and track table readiness.',
+      title: 'Waiter POS Dashboard',
+      desc: 'Coordinate table readiness, take floor orders, and assist dining guests.',
       path: '/waiter',
       icon: '🤵',
       color: 'from-emerald-500 to-emerald-700',
-      badge: 'Service'
+      badge: 'Service POS'
     },
     {
-      title: 'Management',
-      desc: 'Oversee operations, tables, and dining analytics.',
+      title: 'Dining Tables & POS',
+      desc: 'Oversee dining floor tables, live turnover, and instant customer billing.',
       path: '/manager',
       icon: '📊',
       color: 'from-blue-500 to-indigo-700',
-      badge: 'Admin'
+      badge: 'Restaurant POS'
     },
     {
       title: 'Property Onboarding',
-      desc: 'Register hotel tenants, customize theme branding & build menus.',
+      desc: 'Register hotel & restaurant tenants, configure currencies, tax & themes.',
       path: '/onboarding',
       icon: '⚡',
       color: 'from-amber-500 to-amber-700',
       badge: 'Wizard'
     },
     {
-      title: 'Dynamic RBAC System',
+      title: 'Dynamic RBAC Security',
       desc: 'Create roles, assign menu access & granular View/Add/Edit/Delete permissions.',
       path: '/superadmin?tab=rbac',
       icon: '🛡️',
@@ -89,14 +89,13 @@ export default function Home() {
         
         <div className="max-w-4xl mx-auto">
           <span className="inline-block px-4 py-1.5 rounded-full bg-brand/10 border border-brand/20 text-brand text-xs font-bold tracking-[0.3em] uppercase mb-6 animate-fade-in text-brand font-black">
-            Celestial Culinary Experience
+            Unified Hospitality Operating System
           </span>
-          <h1 className="text-6xl md:text-8xl font-black tracking-tighter text-cream mb-6 drop-shadow-2xl">
-            AURA <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand via-[#f3d382] to-brand-hover">DINING</span>
+          <h1 className="text-5xl md:text-7xl font-black tracking-tighter text-cream mb-6 drop-shadow-2xl">
+            AURA <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand via-[#f3d382] to-brand-hover">HOTEL & RESTAURANT</span>
           </h1>
-          <p className="text-xl text-cream-muted max-w-2xl mx-auto leading-relaxed font-medium">
-            Where modern intelligence meets world-class gastronomy. 
-            Select your portal to begin the journey.
+          <p className="text-lg md:text-xl text-cream-muted max-w-2xl mx-auto leading-relaxed font-medium">
+            Seamlessly integrating luxury hotel room management with smart dining table ordering, live kitchen display (KDS), and POS billing.
           </p>
         </div>
       </section>

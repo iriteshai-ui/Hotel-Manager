@@ -1,15 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../SocketContext';
+import { QRCodeSVG } from 'qrcode.react';
+import BillModal from '../components/BillModal';
 import { 
   Building2, Users, BedDouble, CalendarCheck, DollarSign, TrendingUp, 
   Settings, FileText, CheckCircle2, XCircle, Search, Plus, ExternalLink, 
   RefreshCw, LogOut, ArrowUpRight, BarChart3, CreditCard, Shield, 
-  Clock, Download, Filter, UserCheck, AlertCircle, Wrench, Sparkles, ChevronRight
+  Clock, Download, Filter, UserCheck, AlertCircle, Wrench, Sparkles, ChevronRight,
+  UtensilsCrossed, ChefHat, Receipt, QrCode, Trash2, Printer, Check
 } from 'lucide-react';
 
 export default function HotelOwnerDashboard() {
   const { logout, username, role, roles, hotelName: authHotelName, hotelCurrency: authCurrency, login, hasPermission, canAccessModule, isSuperAdmin } = useAuth();
+  const { tables, orders, isConnected, addTable, deleteTable, freeTable, updateOrderStatus } = useSocket();
   const [searchParams] = useSearchParams();
   const hotelIdQuery = searchParams.get('hotelId');
   const navigate = useNavigate();
@@ -26,6 +31,30 @@ export default function HotelOwnerDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [toastMsg, setToastMsg] = useState(null);
+
+  // Restaurant & Dining Management State
+  const [hotelMenuItems, setHotelMenuItems] = useState([]);
+  const [menuLoading, setMenuLoading] = useState(false);
+  const [menuSearch, setMenuSearch] = useState('');
+  const [menuCategoryFilter, setMenuCategoryFilter] = useState('ALL');
+  const [orderStatusFilter, setOrderStatusFilter] = useState('ALL');
+
+  // Restaurant Modals State
+  const [qrModalTable, setQrModalTable] = useState(null);
+  const [billingOrder, setBillingOrder] = useState(null);
+  const [billingTableNumber, setBillingTableNumber] = useState(null);
+  const [showAddTableModal, setShowAddTableModal] = useState(false);
+  const [newTableNum, setNewTableNum] = useState('');
+  const [newTableCapacity, setNewTableCapacity] = useState(4);
+  const [showAddDishModal, setShowAddDishModal] = useState(false);
+  const [newDishForm, setNewDishForm] = useState({
+    name: '',
+    category: 'Veg Starter',
+    price: '',
+    description: '',
+    isBestseller: false,
+    isVeg: true
+  });
 
   // Filters & Search State
   const [bookingStatusFilter, setBookingStatusFilter] = useState('ALL');
@@ -142,6 +171,23 @@ export default function HotelOwnerDashboard() {
     } catch (e) { console.error(e); }
   };
 
+  // 8. Fetch Restaurant Menu for current hotel tenant
+  const fetchHotelMenu = async (slug) => {
+    if (!slug) return;
+    setMenuLoading(true);
+    try {
+      const res = await fetch(`/api/hotels/${encodeURIComponent(slug)}/menu`);
+      if (res.ok) {
+        const data = await res.json();
+        setHotelMenuItems(data.items || []);
+      }
+    } catch (err) {
+      console.error('Error loading restaurant menu:', err);
+    } finally {
+      setMenuLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchDashboard();
     fetchAnalytics();
@@ -151,6 +197,12 @@ export default function HotelOwnerDashboard() {
     fetchFinancials();
     fetchStaff();
   }, [hotelIdQuery]);
+
+  useEffect(() => {
+    if (dashboardData?.hotel?.slug) {
+      fetchHotelMenu(dashboardData.hotel.slug);
+    }
+  }, [dashboardData?.hotel?.slug]);
 
   useEffect(() => {
     fetchAnalytics();
@@ -264,6 +316,124 @@ export default function HotelOwnerDashboard() {
     }
   };
 
+  // Restaurant & Dining Actions
+  const handleToggleBestseller = async (itemId) => {
+    if (!dashboardData?.hotel?.slug) return;
+    try {
+      const res = await fetch(`/api/hotels/${dashboardData.hotel.slug}/menu/${itemId}/bestseller`, {
+        method: 'PATCH',
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setHotelMenuItems(prev => prev.map(i => i.id === itemId ? { ...i, isBestseller: updated.isBestseller } : i));
+        showToast(updated.isBestseller ? '⭐ Pinned to Top as Bestseller!' : 'Unpinned from Bestsellers');
+      }
+    } catch {
+      showToast('Failed to update bestseller status', 'error');
+    }
+  };
+
+  const handleToggleAvailability = async (item) => {
+    if (!dashboardData?.hotel?.slug) return;
+    try {
+      const nextStatus = item.isAvailable === false;
+      const res = await fetch(`/api/hotels/${dashboardData.hotel.slug}/menu/${item.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ isAvailable: nextStatus })
+      });
+      if (res.ok) {
+        setHotelMenuItems(prev => prev.map(i => i.id === item.id ? { ...i, isAvailable: nextStatus } : i));
+        showToast(nextStatus ? `"${item.name}" marked Available` : `"${item.name}" marked Sold Out`);
+      }
+    } catch {
+      showToast('Failed to toggle availability', 'error');
+    }
+  };
+
+  const handleDeleteMenuItem = async (itemId, itemName) => {
+    if (!dashboardData?.hotel?.slug) return;
+    if (!window.confirm(`Delete "${itemName}" from restaurant menu?`)) return;
+    try {
+      const res = await fetch(`/api/hotels/${dashboardData.hotel.slug}/menu/${itemId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        setHotelMenuItems(prev => prev.filter(i => i.id !== itemId));
+        showToast(`"${itemName}" deleted from menu`);
+      }
+    } catch {
+      showToast('Failed to delete dish', 'error');
+    }
+  };
+
+  const handleCreateDish = async (e) => {
+    e.preventDefault();
+    if (!dashboardData?.hotel?.slug) return;
+    try {
+      const res = await fetch(`/api/hotels/${dashboardData.hotel.slug}/menu`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({
+          name: newDishForm.name,
+          category: newDishForm.category,
+          price: parseFloat(newDishForm.price),
+          description: newDishForm.description,
+          isBestseller: newDishForm.isBestseller,
+          isAvailable: true,
+          dietaryTags: newDishForm.isVeg ? ['VEG'] : ['NON_VEG']
+        })
+      });
+      if (res.ok) {
+        const created = await res.json();
+        setHotelMenuItems(prev => [created, ...prev]);
+        setShowAddDishModal(false);
+        setNewDishForm({ name: '', category: 'Veg Starter', price: '', description: '', isBestseller: false, isVeg: true });
+        showToast(`"${created.name}" added to restaurant menu!`);
+      } else {
+        const err = await res.json();
+        showToast(err.error || 'Failed to add dish', 'error');
+      }
+    } catch {
+      showToast('Network error adding dish', 'error');
+    }
+  };
+
+  const handleAddTableSubmit = async (e) => {
+    e.preventDefault();
+    const num = parseInt(newTableNum, 10);
+    const cap = parseInt(newTableCapacity, 10) || 4;
+    if (!num) return;
+    try {
+      const res = await addTable(num, cap);
+      if (res && res.ok) {
+        showToast(`Table ${num} added to dining floor!`);
+        setShowAddTableModal(false);
+        setNewTableNum('');
+      } else {
+        showToast(`Table ${num} could not be added (may already exist)`, 'error');
+      }
+    } catch {
+      showToast('Error adding table', 'error');
+    }
+  };
+
+  const handleFreeTableAction = async (tableNum) => {
+    const ok = await freeTable(tableNum);
+    if (ok) {
+      showToast(`Table ${tableNum} is now Available`);
+    } else {
+      showToast(`Failed to free Table ${tableNum}`, 'error');
+    }
+  };
+
+  const handleSettleOrder = (order, tableNum) => {
+    setBillingOrder(order);
+    setBillingTableNumber(tableNum);
+  };
+
   // Demo Switcher helper to easily showcase multi-tenancy
   const handleQuickDemoSwitch = async (u, p) => {
     setLoading(true);
@@ -276,25 +446,51 @@ export default function HotelOwnerDashboard() {
                          dashboardData?.hotel?.currency === 'INR' ? '₹' : 
                          dashboardData?.hotel?.currency === 'GBP' ? '£' : '$';
 
-  const allNavItems = [
-    { id: 'overview', label: 'Business Overview', icon: BarChart3, module: 'DASHBOARD' },
-    { id: 'analytics', label: 'Sales & Revenue', icon: TrendingUp, module: 'DASHBOARD' },
-    { id: 'bookings', label: 'Bookings Management', icon: CalendarCheck, module: 'BOOKINGS' },
-    { id: 'rooms', label: 'Room Inventory', icon: BedDouble, module: 'ROOMS' },
-    { id: 'customers', label: 'Guests & Customers', icon: Users, module: 'CUSTOMERS' },
-    { id: 'financials', label: 'Financial Reports', icon: FileText, module: 'FINANCIALS' },
-    { id: 'staff', label: 'Staff & Operations', icon: UserCheck, module: 'STAFF' },
-    { id: 'settings', label: 'Property Settings', icon: Settings, module: 'SETTINGS' },
+  const occupiedRoomsCount = rooms.filter(r => r.status === 'OCCUPIED').length;
+  const occupiedTablesCount = tables.filter(t => t.status === 'OCCUPIED').length;
+
+  const navSections = [
+    {
+      heading: 'Hotel Operations',
+      items: [
+        { id: 'overview', label: 'Business Overview', icon: BarChart3, module: 'DASHBOARD' },
+        { id: 'analytics', label: 'Sales & Revenue', icon: TrendingUp, module: 'DASHBOARD' },
+        { id: 'bookings', label: 'Room Reservations', icon: CalendarCheck, module: 'BOOKINGS' },
+        { id: 'rooms', label: 'Room Inventory', icon: BedDouble, module: 'ROOMS' },
+        { id: 'customers', label: 'Hotel Guests & CRM', icon: Users, module: 'CUSTOMERS' },
+      ]
+    },
+    {
+      heading: 'Restaurant & Dining',
+      items: [
+        { id: 'dining-tables', label: 'Dining Tables & Floor', icon: UtensilsCrossed, module: 'DINING_MENU' },
+        { id: 'live-orders', label: 'Kitchen Orders (KDS)', icon: ChefHat, module: 'DINING_MENU' },
+        { id: 'dining-menu', label: 'Food Menu & Bestsellers', icon: Sparkles, module: 'DINING_MENU' },
+      ]
+    },
+    {
+      heading: 'Operations & Admin',
+      items: [
+        { id: 'financials', label: 'Financial Reports', icon: FileText, module: 'FINANCIALS' },
+        { id: 'staff', label: 'Staff & Operations', icon: UserCheck, module: 'STAFF' },
+        { id: 'settings', label: 'Property Settings', icon: Settings, module: 'SETTINGS' },
+      ]
+    }
   ];
 
   // Dynamically filter sidebar modules based on backend Supabase RBAC permissions
-  const navItems = allNavItems.filter(item => isSuperAdmin || canAccessModule(item.module));
+  const filteredNavSections = navSections.map(sec => ({
+    ...sec,
+    items: sec.items.filter(item => isSuperAdmin || canAccessModule(item.module))
+  })).filter(sec => sec.items.length > 0);
+
+  const flatNavItems = filteredNavSections.flatMap(sec => sec.items);
 
   useEffect(() => {
-    if (navItems.length > 0 && !navItems.some(i => i.id === activeTab)) {
-      setActiveTab(navItems[0].id);
+    if (flatNavItems.length > 0 && !flatNavItems.some(i => i.id === activeTab)) {
+      setActiveTab(flatNavItems[0].id);
     }
-  }, [navItems, activeTab]);
+  }, [flatNavItems, activeTab]);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-[#0F172A] flex flex-col md:flex-row antialiased">
@@ -320,7 +516,7 @@ export default function HotelOwnerDashboard() {
           </div>
 
           {/* Strict Isolation Notice Card */}
-          <div className="mb-6 p-3 rounded-xl bg-white/5 border border-white/10">
+          <div className="mb-5 p-3 rounded-xl bg-white/5 border border-white/10">
             <div className="flex items-center gap-1.5 mb-1 text-emerald-400">
               <Shield className="w-3.5 h-3.5" />
               <span className="text-[10px] font-black uppercase tracking-wider">Tenant Data Isolation</span>
@@ -330,26 +526,33 @@ export default function HotelOwnerDashboard() {
             </p>
           </div>
 
-          {/* Navigation Items */}
-          <nav className="space-y-1">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                    isActive 
-                      ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30 font-black' 
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
+          {/* Grouped Navigation Sections */}
+          <nav className="space-y-4">
+            {filteredNavSections.map((section, sIdx) => (
+              <div key={sIdx} className="space-y-1">
+                <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400/80">
+                  {section.heading}
+                </div>
+                {section.items.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveTab(item.id)}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        isActive 
+                          ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30 font-black' 
+                          : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </nav>
         </div>
 
@@ -392,26 +595,28 @@ export default function HotelOwnerDashboard() {
       {/* ── MAIN CONTENT WORKSPACE ── */}
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         {/* Top Header & Demo Switcher Bar */}
-        <header className="bg-white border-b border-slate-200 px-8 py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 flex-shrink-0">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-black text-[#0F172A] tracking-tight">
-                {dashboardData?.hotel?.name || 'Hotel Management Dashboard'}
-              </h2>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 uppercase font-mono">
-                {dashboardData?.hotel?.currency || 'USD'}
-              </span>
+        <header className="bg-white border-b border-slate-200 px-8 py-3.5 flex flex-col gap-3 flex-shrink-0">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-black text-[#0F172A] tracking-tight">
+                  {dashboardData?.hotel?.name || 'Hotel Management Dashboard'}
+                </h2>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 uppercase font-mono">
+                  {dashboardData?.hotel?.currency || 'USD'}
+                </span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 uppercase font-mono">
+                  Hotel & Restaurant OS
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 font-medium">
+                Unified operations: Room reservations, housekeeping, dining floor, and live kitchen orders
+              </p>
             </div>
-            <p className="text-xs text-slate-500 font-medium">
-              Real-time room occupancy, reservations, and financial ledger
-            </p>
-          </div>
 
-          {/* Quick Demo Switcher Pills & Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2.5">
             {/* Quick Demo Switcher */}
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-[11px] font-bold">
-              <span className="text-slate-400 px-2 text-[10px] uppercase font-black">Demo Persona:</span>
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-[11px] font-bold self-start lg:self-auto">
+              <span className="text-slate-400 px-2 text-[10px] uppercase font-black">Demo Tenant:</span>
               <button
                 onClick={() => handleQuickDemoSwitch('owner_laybhari', 'password123')}
                 className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
@@ -437,29 +642,72 @@ export default function HotelOwnerDashboard() {
                 Hotel B (EUR €)
               </button>
             </div>
+          </div>
 
-            {/* Direct Guest Menu Link */}
-            {dashboardData?.hotel?.slug && (
+          {/* Operational Status Badges & Quick Action Shortcuts */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
+            {/* Live Dual Badges */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs font-bold">
+                <BedDouble className="w-3.5 h-3.5 text-blue-600" />
+                <span>Hotel: {rooms.length} Rooms ({occupiedRoomsCount} Occupied)</span>
+              </div>
+
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold">
+                <UtensilsCrossed className="w-3.5 h-3.5 text-amber-600" />
+                <span>Restaurant: {tables.length} Tables ({occupiedTablesCount} Active)</span>
+              </div>
+
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-xs font-mono font-medium">
+                <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                <span>{isConnected ? 'Live WebSocket' : 'Syncing'}</span>
+              </div>
+            </div>
+
+            {/* Quick Navigation Action Shortcuts */}
+            <div className="flex flex-wrap items-center gap-2">
+              {dashboardData?.hotel?.slug && (
+                <a
+                  href={`/menu?hotel=${dashboardData.hotel.slug}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all flex items-center gap-1.5 no-underline"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Guest QR Menu ↗</span>
+                </a>
+              )}
+
               <a
-                href={`/menu?hotel=${dashboardData.hotel.slug}`}
+                href="/kitchen"
                 target="_blank"
                 rel="noreferrer"
-                className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold transition-all flex items-center gap-1.5 no-underline"
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all flex items-center gap-1.5 no-underline"
               >
-                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                <span>Guest Menu ↗</span>
+                <ChefHat className="w-3.5 h-3.5 text-rose-600" />
+                <span>Kitchen KDS ↗</span>
               </a>
-            )}
 
-            {(isSuperAdmin || hasPermission('BOOKINGS', 'can_add')) && (
-              <button
-                onClick={() => setShowNewBookingModal(true)}
-                className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+              <a
+                href="/waiter"
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all flex items-center gap-1.5 no-underline"
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>New Booking</span>
-              </button>
-            )}
+                <UtensilsCrossed className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Waiter POS ↗</span>
+              </a>
+
+              {(isSuperAdmin || hasPermission('BOOKINGS', 'can_add')) && (
+                <button
+                  onClick={() => setShowNewBookingModal(true)}
+                  className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>New Booking</span>
+                </button>
+              )}
+            </div>
           </div>
         </header>
 
@@ -1119,6 +1367,481 @@ export default function HotelOwnerDashboard() {
             </div>
           </div>
         )}
+
+        {/* ─────────────────────────────────────────────────────────── */}
+        {/* TAB: DINING TABLES & FLOOR PLAN                             */}
+        {/* ─────────────────────────────────────────────────────────── */}
+        {activeTab === 'dining-tables' && (
+          <div className="p-8 space-y-6 animate-fade-in">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Dining Floor & Table Status</h3>
+                <p className="text-xs text-slate-500">Live occupancy, dine-in QR codes, table orders, and turnover</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowAddTableModal(true)}
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Dining Table</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Metric Summary Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Total Tables</span>
+                <span className="text-2xl font-black text-slate-900">{tables.length}</span>
+                <span className="text-[10px] font-bold text-slate-400 block mt-1">Floor capacity</span>
+              </div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Occupied / Dining</span>
+                <span className="text-2xl font-black text-amber-600">{occupiedTablesCount}</span>
+                <span className="text-[10px] font-bold text-amber-600 block mt-1 flex items-center">
+                  <UtensilsCrossed className="w-3 h-3 mr-1" /> Active meals
+                </span>
+              </div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Available Tables</span>
+                <span className="text-2xl font-black text-emerald-600">{Math.max(0, tables.length - occupiedTablesCount)}</span>
+                <span className="text-[10px] font-bold text-emerald-600 block mt-1 flex items-center">
+                  <CheckCircle2 className="w-3 h-3 mr-1" /> Ready for seating
+                </span>
+              </div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Active Kitchen Orders</span>
+                <span className="text-2xl font-black text-blue-600">{orders.filter(o => o.status !== 'PAID').length}</span>
+                <span className="text-[10px] font-bold text-blue-600 block mt-1">Placed / Preparing</span>
+              </div>
+            </div>
+
+            {/* Tables Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {tables.map(table => {
+                const isOccupied = table.status === 'OCCUPIED';
+                const currentOrder = orders.find(o => o.id === table.currentOrderId || (o.tableNumber === table.number && o.status !== 'PAID'));
+                const orderTotal = currentOrder?.items?.reduce((s, i) => s + (i.price * i.quantity), 0) || 0;
+
+                return (
+                  <div
+                    key={table.id || table.number}
+                    className={`bg-white rounded-2xl border p-5 transition-all shadow-sm flex flex-col justify-between ${
+                      isOccupied ? 'border-amber-300 ring-1 ring-amber-200' : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs ${
+                            isOccupied ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'
+                          }`}>
+                            T{table.number}
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-black text-slate-900">Table {table.number}</h4>
+                            <span className="text-[10px] text-slate-400 font-medium">{table.capacity || 4} Seats</span>
+                          </div>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                          isOccupied ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                        }`}>
+                          {isOccupied ? 'Occupied' : 'Available'}
+                        </span>
+                      </div>
+
+                      {/* Order Info if Occupied */}
+                      {isOccupied && currentOrder ? (
+                        <div className="my-3 p-3 rounded-xl bg-amber-50/70 border border-amber-200/80 text-xs">
+                          <div className="flex justify-between items-center mb-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">Order #{currentOrder.id.slice(-6)}</span>
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white text-amber-900 border border-amber-200">
+                              {currentOrder.status}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-600 line-clamp-2 mb-2 font-medium">
+                            {currentOrder.items?.map(i => `${i.quantity}× ${i.name}`).join(', ') || 'No items listed'}
+                          </div>
+                          <div className="flex justify-between items-center pt-1.5 border-t border-amber-200/60 font-bold">
+                            <span className="text-slate-500 text-[11px]">Bill Total:</span>
+                            <span className="text-sm font-black text-amber-900">{currencySymbol}{orderTotal.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="my-3 p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-400 font-medium text-center">
+                          Table is clean & ready for guests
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <button
+                        onClick={() => setQrModalTable(table)}
+                        className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                        title="View Dine-In QR Code"
+                      >
+                        <QrCode className="w-3.5 h-3.5 text-slate-600" />
+                        <span>QR Code</span>
+                      </button>
+
+                      <div className="flex items-center gap-1.5">
+                        {isOccupied ? (
+                          <>
+                            {currentOrder && (
+                              <button
+                                onClick={() => handleSettleOrder(currentOrder, table.number)}
+                                className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                              >
+                                <Receipt className="w-3.5 h-3.5" />
+                                <span>Bill</span>
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleFreeTableAction(table.number)}
+                              className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[11px] font-bold transition-colors cursor-pointer"
+                            >
+                              Free Table
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Remove Table ${table.number} from floor plan?`)) {
+                                deleteTable(table.number);
+                                showToast(`Table ${table.number} removed`);
+                              }
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                            title="Delete Table"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ─────────────────────────────────────────────────────────── */}
+        {/* TAB: LIVE KITCHEN ORDERS / KDS                              */}
+        {/* ─────────────────────────────────────────────────────────── */}
+        {activeTab === 'live-orders' && (
+          <div className="p-8 space-y-6 animate-fade-in">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Live Kitchen Orders & KDS</h3>
+                <p className="text-xs text-slate-500">Real-time status tracking from guest order placement to kitchen fulfillment</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href="/kitchen"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all flex items-center gap-1.5 no-underline"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Open Full Kitchen Display (KDS) ↗</span>
+                </a>
+              </div>
+            </div>
+
+            {/* Filter Tabs */}
+            <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+              {['ALL', 'PLACED', 'PREPARING', 'SERVED'].map(st => {
+                const count = st === 'ALL' 
+                  ? orders.filter(o => o.status !== 'PAID').length 
+                  : orders.filter(o => o.status === st).length;
+                return (
+                  <button
+                    key={st}
+                    onClick={() => setOrderStatusFilter(st)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      orderStatusFilter === st
+                        ? 'bg-amber-600 text-white shadow-sm'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {st} ({count})
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Orders Grid */}
+            {orders.filter(o => o.status !== 'PAID' && (orderStatusFilter === 'ALL' || o.status === orderStatusFilter)).length === 0 ? (
+              <div className="p-12 text-center bg-white rounded-2xl border border-slate-200">
+                <ChefHat className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                <h4 className="text-sm font-bold text-slate-700">No active orders in this queue</h4>
+                <p className="text-xs text-slate-400 mt-1">New guest orders placed via table QR menu or room service will appear here instantly.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {orders
+                  .filter(o => o.status !== 'PAID' && (orderStatusFilter === 'ALL' || o.status === orderStatusFilter))
+                  .map(order => {
+                    const subtotal = order.items?.reduce((s, i) => s + (i.price * i.quantity), 0) || 0;
+                    return (
+                      <div key={order.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col justify-between">
+                        <div>
+                          <div className="flex justify-between items-center mb-3">
+                            <div className="flex items-center gap-2">
+                              <span className="px-2 py-1 rounded-lg bg-slate-900 text-white text-xs font-black">
+                                Table {order.tableNumber}
+                              </span>
+                              <span className="text-[11px] font-mono text-slate-400">#{order.id.slice(-6)}</span>
+                            </div>
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                              order.status === 'PLACED' ? 'bg-blue-100 text-blue-800' :
+                              order.status === 'PREPARING' ? 'bg-amber-100 text-amber-800' :
+                              'bg-emerald-100 text-emerald-800'
+                            }`}>
+                              {order.status}
+                            </span>
+                          </div>
+
+                          {/* Order Items */}
+                          <div className="divide-y divide-slate-100 my-3">
+                            {order.items?.map((item, idx) => (
+                              <div key={idx} className="py-1.5 flex justify-between items-center text-xs">
+                                <span className="font-bold text-slate-800">
+                                  <span className="text-amber-700 mr-1.5 font-black">{item.quantity}×</span>
+                                  {item.name}
+                                </span>
+                                <span className="font-mono text-slate-600">{currencySymbol}{(item.price * item.quantity).toFixed(2)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="pt-3 border-t border-slate-100">
+                          <div className="flex justify-between items-center mb-3 font-bold">
+                            <span className="text-xs text-slate-500">Total:</span>
+                            <span className="text-sm font-black text-slate-900">{currencySymbol}{subtotal.toFixed(2)}</span>
+                          </div>
+
+                          {/* Workflow buttons */}
+                          <div className="flex items-center gap-2">
+                            {order.status === 'PLACED' && (
+                              <button
+                                onClick={() => {
+                                  updateOrderStatus(order.id, 'PREPARING');
+                                  showToast(`Order #${order.id.slice(-6)} marked Preparing`);
+                                }}
+                                className="flex-1 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all cursor-pointer"
+                              >
+                                Start Preparing
+                              </button>
+                            )}
+                            {order.status === 'PREPARING' && (
+                              <button
+                                onClick={() => {
+                                  updateOrderStatus(order.id, 'SERVED');
+                                  showToast(`Order #${order.id.slice(-6)} marked Served`);
+                                }}
+                                className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all cursor-pointer"
+                              >
+                                Mark as Served
+                              </button>
+                            )}
+                            {order.status === 'SERVED' && (
+                              <button
+                                onClick={() => handleSettleOrder(order, order.tableNumber)}
+                                className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                              >
+                                <Receipt className="w-3.5 h-3.5" />
+                                <span>Settle & Print Bill</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─────────────────────────────────────────────────────────── */}
+        {/* TAB: RESTAURANT MENU & BESTSELLERS                          */}
+        {/* ─────────────────────────────────────────────────────────── */}
+        {activeTab === 'dining-menu' && (
+          <div className="p-8 space-y-6 animate-fade-in">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xl font-black text-slate-900">Restaurant Menu & Bestsellers</h3>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                    {hotelMenuItems.length} Items Listed
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Manage dishes, descriptions, dietary classification, and ⭐ Bestseller pins for {dashboardData?.hotel?.name || 'this property'}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <a
+                  href={`/menu?hotel=${dashboardData?.hotel?.slug}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all flex items-center gap-1.5 no-underline"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Guest QR View ↗</span>
+                </a>
+                <button
+                  onClick={() => setShowAddDishModal(true)}
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Menu Item</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Search & Category Filter */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search dish by name, ingredients, or spices..."
+                    value={menuSearch}
+                    onChange={e => setMenuSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-300 text-xs focus:outline-none focus:border-amber-600"
+                  />
+                </div>
+              </div>
+
+              {/* Category Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+                {['ALL', ...new Set(hotelMenuItems.map(i => i.category))].map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => setMenuCategoryFilter(cat)}
+                    className={`px-3 py-1 rounded-lg font-bold text-xs whitespace-nowrap transition-all cursor-pointer ${
+                      menuCategoryFilter === cat
+                        ? 'bg-amber-600 text-white shadow-sm'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {cat} {cat === 'ALL' ? `(${hotelMenuItems.length})` : `(${hotelMenuItems.filter(i => i.category === cat).length})`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Menu Items Table */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                    <tr>
+                      <th className="px-4 py-3">Type</th>
+                      <th className="px-4 py-3">Dish / Item Name</th>
+                      <th className="px-4 py-3">Category</th>
+                      <th className="px-4 py-3 text-right">Price</th>
+                      <th className="px-4 py-3 text-center">Bestseller Pin</th>
+                      <th className="px-4 py-3 text-center">Availability</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {hotelMenuItems
+                      .filter(item => {
+                        const matchCat = menuCategoryFilter === 'ALL' || item.category === menuCategoryFilter;
+                        const matchSearch = !menuSearch.trim() || 
+                          item.name.toLowerCase().includes(menuSearch.toLowerCase()) || 
+                          (item.description && item.description.toLowerCase().includes(menuSearch.toLowerCase()));
+                        return matchCat && matchSearch;
+                      })
+                      .map(item => {
+                        const isVeg = item.dietaryTags?.includes('VEG') || 
+                          (!item.name.toLowerCase().includes('chicken') && !item.name.toLowerCase().includes('mutton') && !item.name.toLowerCase().includes('anda'));
+                        return (
+                          <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex items-center justify-center w-5 h-5 rounded border ${
+                                isVeg ? 'border-emerald-600 bg-emerald-50 text-emerald-600' : 'border-rose-600 bg-rose-50 text-rose-600'
+                              }`} title={isVeg ? 'Vegetarian' : 'Non-Vegetarian'}>
+                                <span className={`w-2 h-2 rounded-full ${isVeg ? 'bg-emerald-600' : 'bg-rose-600'}`} />
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                                <span>{item.name}</span>
+                                {item.isBestseller && (
+                                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 font-black">
+                                    ⭐ PINNED
+                                  </span>
+                                )}
+                              </div>
+                              {item.description && (
+                                <p className="text-[11px] text-slate-500 font-medium line-clamp-1 mt-0.5">
+                                  {item.description}
+                                </p>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold text-[10px]">
+                                {item.category}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right font-black text-slate-900 text-sm">
+                              {currencySymbol}{item.price}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <button
+                                onClick={() => handleToggleBestseller(item.id)}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                                  item.isBestseller
+                                    ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                    : 'bg-slate-100 text-slate-400 hover:text-amber-700 hover:bg-amber-50'
+                                }`}
+                              >
+                                {item.isBestseller ? '★ Bestseller' : '☆ Pin'}
+                              </button>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <button
+                                onClick={() => handleToggleAvailability(item)}
+                                className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                  item.isAvailable !== false
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-rose-100 text-rose-800'
+                                }`}
+                              >
+                                {item.isAvailable !== false ? 'Available' : 'Sold Out'}
+                              </button>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <button
+                                onClick={() => handleDeleteMenuItem(item.id, item.name)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                title="Delete Dish"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* ── NEW BOOKING MODAL ── */}
@@ -1412,6 +2135,253 @@ export default function HotelOwnerDashboard() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* ── QR CODE STANDEE MODAL ── */}
+      {qrModalTable && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setQrModalTable(null)}>
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-slate-200 text-center" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <div className="text-left">
+                <h3 className="text-lg font-black text-slate-900">Table {qrModalTable.number} Dine-in QR</h3>
+                <p className="text-xs text-slate-500">{dashboardData?.hotel?.name || 'Hotel Lay Bhari'}</p>
+              </div>
+              <button onClick={() => setQrModalTable(null)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 cursor-pointer">✕</button>
+            </div>
+
+            <div className="p-4 bg-white rounded-2xl border-2 border-slate-900 inline-block shadow-inner mb-4" id="qr-standee-container">
+              <QRCodeSVG
+                value={`${window.location.origin}/menu?hotel=${dashboardData?.hotel?.slug || 'laybhari'}&table=t${qrModalTable.number}`}
+                size={180}
+                level="H"
+                includeMargin={false}
+              />
+            </div>
+
+            <div className="text-xs font-mono bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-slate-600 break-all mb-4">
+              {window.location.origin}/menu?hotel={dashboardData?.hotel?.slug || 'laybhari'}&table=t{qrModalTable.number}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  const qrUrl = `${window.location.origin}/menu?hotel=${dashboardData?.hotel?.slug || 'laybhari'}&table=t${qrModalTable.number}`;
+                  navigator.clipboard.writeText(qrUrl);
+                  showToast('Dine-in menu link copied to clipboard!');
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all cursor-pointer"
+              >
+                Copy Link
+              </button>
+              <button
+                onClick={() => {
+                  const printWindow = window.open('', '_blank', 'width=450,height=600');
+                  const qrSvg = document.getElementById('qr-standee-container')?.innerHTML || '';
+                  const hotelName = dashboardData?.hotel?.name || 'Hotel Lay Bhari';
+                  printWindow.document.write(`
+                    <!DOCTYPE html>
+                    <html>
+                      <head>
+                        <title>Table ${qrModalTable.number} - QR Standee</title>
+                        <style>
+                          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 40px; color: #000; }
+                          h1 { font-size: 24px; font-weight: 900; margin-bottom: 4px; }
+                          h2 { font-size: 16px; font-weight: 700; color: #555; margin-top: 0; }
+                          .qr-box { margin: 24px auto; display: inline-block; padding: 16px; border: 3px solid #000; border-radius: 16px; }
+                          p { font-size: 13px; font-weight: 600; color: #333; margin-top: 8px; }
+                          .hint { font-size: 11px; color: #777; }
+                        </style>
+                      </head>
+                      <body>
+                        <h1>${hotelName}</h1>
+                        <h2>Dining Table ${qrModalTable.number}</h2>
+                        <div class="qr-box">${qrSvg}</div>
+                        <p>Scan with your phone to view menu & order food</p>
+                        <p class="hint">Instant contactless ordering & digital bill</p>
+                      </body>
+                    </html>
+                  `);
+                  printWindow.document.close();
+                  printWindow.focus();
+                  printWindow.print();
+                  printWindow.close();
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print Standee</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── ADD TABLE MODAL ── */}
+      {showAddTableModal && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowAddTableModal(false)}>
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Add Dining Table</h3>
+                <p className="text-xs text-slate-500">Configure new table on dining floor</p>
+              </div>
+              <button onClick={() => setShowAddTableModal(false)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 cursor-pointer">✕</button>
+            </div>
+
+            <form onSubmit={handleAddTableSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Table Number *</label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  placeholder="e.g. 11"
+                  value={newTableNum}
+                  onChange={e => setNewTableNum(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Seating Capacity</label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  max="20"
+                  value={newTableCapacity}
+                  onChange={e => setNewTableCapacity(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-600/20 transition-all cursor-pointer mt-4"
+              >
+                Add Table to Floor
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── ADD MENU ITEM (DISH) MODAL ── */}
+      {showAddDishModal && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowAddDishModal(false)}>
+          <div className="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Add Menu Item</h3>
+                <p className="text-xs text-slate-500">Create new dish for {dashboardData?.hotel?.name || 'this property'}</p>
+              </div>
+              <button onClick={() => setShowAddDishModal(false)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 cursor-pointer">✕</button>
+            </div>
+
+            <form onSubmit={handleCreateDish} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Dish / Item Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Mutton Handi Special"
+                  value={newDishForm.name}
+                  onChange={e => setNewDishForm(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Category *</label>
+                  <select
+                    value={newDishForm.category}
+                    onChange={e => setNewDishForm(prev => ({ ...prev, category: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold focus:outline-none focus:border-amber-600"
+                  >
+                    <option value="Veg Starter">Veg Starter</option>
+                    <option value="Veg Kabab">Veg Kabab</option>
+                    <option value="Veg Main Course">Veg Main Course</option>
+                    <option value="Veg Soup">Veg Soup</option>
+                    <option value="Chinese Veg">Chinese Veg</option>
+                    <option value="Chinese Non-Veg">Chinese Non-Veg</option>
+                    <option value="Main Course (Non-Veg)">Main Course (Non-Veg)</option>
+                    <option value="Non Veg Handi Special">Non Veg Handi Special</option>
+                    <option value="Roti Special">Roti Special</option>
+                    <option value="Rice">Rice</option>
+                    <option value="Desserts & Beverages">Desserts & Beverages</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Price ({currencySymbol}) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    min="1"
+                    placeholder="220"
+                    value={newDishForm.price}
+                    onChange={e => setNewDishForm(prev => ({ ...prev, price: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Description / Ingredients</label>
+                <textarea
+                  rows="2"
+                  placeholder="Ingredients, preparation style, spice level or Half/Full notes..."
+                  value={newDishForm.description}
+                  onChange={e => setNewDishForm(prev => ({ ...prev, description: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs focus:outline-none focus:border-amber-600"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={newDishForm.isVeg}
+                    onChange={e => setNewDishForm(prev => ({ ...prev, isVeg: e.target.checked }))}
+                    className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>Vegetarian Dish</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={newDishForm.isBestseller}
+                    onChange={e => setNewDishForm(prev => ({ ...prev, isBestseller: e.target.checked }))}
+                    className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500"
+                  />
+                  <span>⭐ Pin as Bestseller</span>
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-600/20 transition-all cursor-pointer mt-4"
+              >
+                Add Dish to Menu
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── BILLING & SETTLEMENT MODAL ── */}
+      {billingOrder && (
+        <BillModal
+          order={billingOrder}
+          tableNumber={billingTableNumber}
+          onClose={() => {
+            setBillingOrder(null);
+            setBillingTableNumber(null);
+          }}
+        />
       )}
     </div>
   );

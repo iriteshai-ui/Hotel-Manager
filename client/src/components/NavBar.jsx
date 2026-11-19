@@ -7,7 +7,7 @@ const NavBar = ({ title, statusBadge, hotel }) => {
 
   const brandInitial = hotel?.name ? hotel.name.trim().charAt(0).toUpperCase() : 'A';
   const brandName = hotel?.name ? hotel.name.toUpperCase() : 'AURA';
-  const brandSub = hotel?.name ? 'Hotel & Dining' : 'Dining';
+  const brandSub = hotel?.name ? `${hotel.name} • Hotel & Restaurant` : 'Hotel & Restaurant OS';
   const primaryColor = hotel?.theme?.primaryColor || '#D97706';
 
   // Build dynamic navigation links driven by database-assigned RBAC permissions
@@ -17,10 +17,11 @@ const NavBar = ({ title, statusBadge, hotel }) => {
     if (isSuperAdmin) {
       navLinks = [
         { label: 'Super Admin', path: '/superadmin' },
-        { label: 'RBAC Access', path: '/superadmin?tab=rbac' },
-        { label: 'Hotel Dashboard', path: '/hotel-dashboard' },
-        { label: 'Dining POS', path: '/manager' },
-        { label: 'Onboard Hotel', path: '/onboarding' },
+        { label: 'RBAC Roles', path: '/superadmin?tab=rbac' },
+        { label: 'Hotel & Dining Dashboard', path: '/hotel-dashboard' },
+        { label: 'Restaurant POS', path: '/manager' },
+        { label: 'Kitchen KDS', path: '/kitchen' },
+        { label: 'Waiter View', path: '/waiter' },
       ];
     } else {
       // Dynamic resolution from backend-provided accessibleModules
@@ -32,12 +33,12 @@ const NavBar = ({ title, statusBadge, hotel }) => {
         navLinks.push({ label: 'Platform Admin', path: '/superadmin' });
       }
       if (hasHotelDashboardAccess) {
-        navLinks.push({ label: 'Hotel Dashboard', path: '/hotel-dashboard' });
+        navLinks.push({ label: 'Hotel & Restaurant', path: '/hotel-dashboard' });
       }
       if (hasDiningAccess) {
-        navLinks.push({ label: 'Dining POS', path: '/manager' });
+        navLinks.push({ label: 'Restaurant POS', path: '/manager' });
       }
-      if (role === 'WAITER' || roles.includes('STAFF')) {
+      if (role === 'WAITER' || (roles && roles.includes('STAFF'))) {
         navLinks.push({ label: 'Waiter View', path: '/waiter' });
       }
       if (role === 'KITCHEN') {
