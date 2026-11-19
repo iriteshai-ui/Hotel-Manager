@@ -159,7 +159,30 @@ export async function initMultiTenantSchema() {
       hotelBId = hotelBCheck.rows[0].id;
     }
 
-    // 9. Seed Core Users (Super Admin, Hotel A Owner, Hotel B Owner)
+    const hotelLCheck = await client.query("SELECT id FROM hotels WHERE slug = 'laybhari';");
+    let hotelLaybhariId;
+    if (hotelLCheck.rows.length === 0) {
+      const hLRes = await client.query(`
+        INSERT INTO hotels (name, slug, currency, tax_percentage, theme, contact_email, contact_phone, status, total_rooms)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id;
+      `, [
+        'Hotel Lay Bhari',
+        'laybhari',
+        'INR',
+        5.00,
+        JSON.stringify({ primaryColor: '#D97706', backgroundColor: '#0F172A', borderRadius: '14px' }),
+        'contact@hotellaybhari.com',
+        '+91 98765 43210',
+        'ACTIVE',
+        12
+      ]);
+      hotelLaybhariId = hLRes.rows[0].id;
+    } else {
+      hotelLaybhariId = hotelLCheck.rows[0].id;
+    }
+
+    // 9. Seed Core Users (Super Admin, Hotel A Owner, Hotel B Owner, Hotel Lay Bhari Owner)
     await client.query(`
       INSERT INTO app_users (username, password, role, hotel_id, full_name, email, status)
       VALUES 
@@ -183,6 +206,14 @@ export async function initMultiTenantSchema() {
       ON CONFLICT (username) DO UPDATE 
         SET role = 'HOTEL_OWNER', hotel_id = $1, full_name = 'Claire Delacroix (Hotel B Owner)';
     `, [hotelBId]);
+
+    await client.query(`
+      INSERT INTO app_users (username, password, role, hotel_id, full_name, email, status)
+      VALUES 
+        ('owner_laybhari', 'password123', 'HOTEL_OWNER', $1, 'Tanaji Rao (Hotel Lay Bhari Owner)', 'owner@hotellaybhari.com', 'ACTIVE')
+      ON CONFLICT (username) DO UPDATE 
+        SET role = 'HOTEL_OWNER', hotel_id = $1, full_name = 'Tanaji Rao (Hotel Lay Bhari Owner)';
+    `, [hotelLaybhariId]);
 
     // 10. Seed Rooms for Hotel A if none exist
     const roomsACheck = await client.query('SELECT COUNT(*) FROM hotel_rooms WHERE hotel_id = $1;', [hotelAId]);

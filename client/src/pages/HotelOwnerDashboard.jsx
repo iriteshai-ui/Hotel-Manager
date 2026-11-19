@@ -413,12 +413,20 @@ export default function HotelOwnerDashboard() {
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-[11px] font-bold">
               <span className="text-slate-400 px-2 text-[10px] uppercase font-black">Demo Persona:</span>
               <button
+                onClick={() => handleQuickDemoSwitch('owner_laybhari', 'password123')}
+                className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                  dashboardData?.hotel?.slug === 'laybhari' ? 'bg-white shadow-sm text-amber-700 font-black' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Hotel Lay Bhari (INR ₹)
+              </button>
+              <button
                 onClick={() => handleQuickDemoSwitch('owner_hotela', 'password123')}
                 className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
                   dashboardData?.hotel?.slug === 'grand-horizon' ? 'bg-white shadow-sm text-blue-700 font-black' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Hotel A (Grand Horizon)
+                Hotel A (USD $)
               </button>
               <button
                 onClick={() => handleQuickDemoSwitch('owner_hotelb', 'password123')}
@@ -426,7 +434,7 @@ export default function HotelOwnerDashboard() {
                   dashboardData?.hotel?.slug === 'royal-palms' ? 'bg-white shadow-sm text-emerald-700 font-black' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Hotel B (Royal Palms)
+                Hotel B (EUR €)
               </button>
             </div>
 

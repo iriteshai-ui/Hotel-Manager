@@ -100,6 +100,15 @@ export default function Login() {
 
             <button
               type="button"
+              onClick={() => handleQuickLogin('owner_laybhari', 'password123')}
+              className="w-full px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 text-xs font-bold transition-all flex items-center justify-between cursor-pointer"
+            >
+              <span className="flex items-center gap-1.5">🍛 Hotel Lay Bhari (Owner)</span>
+              <span className="font-mono text-[11px] opacity-80">owner_laybhari / password123</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => handleQuickLogin('owner_hotela', 'password123')}
               className="w-full px-3 py-2 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-300 hover:bg-blue-500/20 text-xs font-bold transition-all flex items-center justify-between cursor-pointer"
             >

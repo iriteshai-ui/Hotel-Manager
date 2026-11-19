@@ -21,6 +21,14 @@ export default function Home() {
       badge: 'Hotel Owner'
     },
     {
+      title: 'Hotel Lay Bhari Menu',
+      desc: 'Browse authentic 98-item menu with Maharashtrian specialties & bestsellers.',
+      path: '/menu?hotel=laybhari',
+      icon: '🍛',
+      color: 'from-amber-600 to-orange-700',
+      badge: 'Lay Bhari (INR ₹)'
+    },
+    {
       title: 'Customer Menu',
       desc: 'Seamless ordering experience for your guests.',
       path: '/menu',
