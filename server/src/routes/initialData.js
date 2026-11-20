@@ -5,10 +5,19 @@ const router = Router();
 
 router.get('/initial_data', async (req, res) => {
   try {
+    const token = req.headers['x-auth-token'];
+    let hotelId = req.headers['x-hotel-id'] || req.query.hotelId || null;
+    if (!hotelId && token) {
+      const user = await db.getUserByToken(token);
+      if (user?.hotel_id) {
+        hotelId = user.hotel_id;
+      }
+    }
+
     const [menuItems, orders, tables] = await Promise.all([
-      db.getMenu(),
-      db.getActiveOrders(),
-      db.getTables()
+      hotelId ? db.getMenuItemsByHotel(hotelId) : db.getMenu(),
+      db.getActiveOrders(hotelId),
+      db.getTables(hotelId)
     ]);
     res.json({
       menuItems,

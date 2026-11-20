@@ -22,7 +22,9 @@ export const SocketProvider = ({ children }) => {
         try {
             const headers = { 'Content-Type': 'application/json' };
             const token = getToken();
+            const hotelId = localStorage.getItem('auth_hotel_id');
             if (token) headers['X-Auth-Token'] = token;
+            if (hotelId) headers['x-hotel-id'] = hotelId;
             const response = await fetch(`/api/initial_data`, { headers });
             const data = await response.json();
             if (data.menuItems) setMenuItems(data.menuItems);

@@ -22,8 +22,10 @@ function resolveTenantHotel(req, res, next) {
     return next();
   }
 
-  // Hotel Owner role: strictly enforce authenticated user's hotel_id
-  if (req.user.role === 'HOTEL_OWNER') {
+  // Hotel staff & management roles: strictly enforce authenticated user's hotel_id
+  const userRoles = [req.user.role, ...(req.user.roles || [])];
+  const isHotelTenant = userRoles.some(r => ['HOTEL_OWNER', 'MANAGER', 'RECEPTIONIST', 'ACCOUNTANT'].includes(r));
+  if (isHotelTenant) {
     if (!req.user.hotel_id) {
       return res.status(403).json({ error: 'Forbidden: No hotel property associated with this account' });
     }
