@@ -33,6 +33,7 @@ export default function HotelOwnerDashboard() {
   const [toastMsg, setToastMsg] = useState(null);
 
   // Restaurant & Dining Management State
+  const [hotelTables, setHotelTables] = useState([]);
   const [hotelMenuItems, setHotelMenuItems] = useState([]);
   const [menuLoading, setMenuLoading] = useState(false);
   const [menuSearch, setMenuSearch] = useState('');
@@ -188,6 +189,19 @@ export default function HotelOwnerDashboard() {
     }
   };
 
+  // 9. Fetch Dining Tables for current hotel tenant
+  const fetchHotelTables = async () => {
+    try {
+      const res = await fetch(getQueryUrl('/api/tables'), { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setHotelTables(data);
+      }
+    } catch (e) {
+      console.error('Error loading hotel tables:', e);
+    }
+  };
+
   useEffect(() => {
     fetchDashboard();
     fetchAnalytics();
@@ -196,13 +210,15 @@ export default function HotelOwnerDashboard() {
     fetchCustomers();
     fetchFinancials();
     fetchStaff();
+    fetchHotelTables();
   }, [hotelIdQuery]);
 
   useEffect(() => {
     if (dashboardData?.hotel?.slug) {
       fetchHotelMenu(dashboardData.hotel.slug);
+      fetchHotelTables();
     }
-  }, [dashboardData?.hotel?.slug]);
+  }, [dashboardData?.hotel?.slug, dashboardData?.hotel?.id]);
 
   useEffect(() => {
     fetchAnalytics();
@@ -407,13 +423,20 @@ export default function HotelOwnerDashboard() {
     const cap = parseInt(newTableCapacity, 10) || 4;
     if (!num) return;
     try {
-      const res = await addTable(num, cap);
-      if (res && res.ok) {
+      const res = await fetch(getQueryUrl('/api/tables'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ number: num, capacity: cap, hotelId: dashboardData?.hotel?.id })
+      });
+      if (res.ok) {
         showToast(`Table ${num} added to dining floor!`);
         setShowAddTableModal(false);
         setNewTableNum('');
+        fetchHotelTables();
+        if (addTable) addTable(num, cap);
       } else {
-        showToast(`Table ${num} could not be added (may already exist)`, 'error');
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || `Table ${num} could not be added (may already exist)`, 'error');
       }
     } catch {
       showToast('Error adding table', 'error');
@@ -421,11 +444,38 @@ export default function HotelOwnerDashboard() {
   };
 
   const handleFreeTableAction = async (tableNum) => {
-    const ok = await freeTable(tableNum);
-    if (ok) {
-      showToast(`Table ${tableNum} is now Available`);
-    } else {
-      showToast(`Failed to free Table ${tableNum}`, 'error');
+    try {
+      const res = await fetch(getQueryUrl(`/api/tables/${tableNum}/free`), {
+        method: 'PUT',
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        showToast(`Table ${tableNum} is now Available`);
+        fetchHotelTables();
+      } else {
+        showToast(`Failed to free Table ${tableNum}`, 'error');
+      }
+    } catch {
+      showToast('Error freeing table', 'error');
+    }
+  };
+
+  const handleDeleteTableAction = async (tableNum) => {
+    if (!window.confirm(`Remove Table ${tableNum} from floor plan?`)) return;
+    try {
+      const res = await fetch(getQueryUrl(`/api/tables/${tableNum}`), {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        showToast(`Table ${tableNum} removed from dining floor`);
+        fetchHotelTables();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || 'Failed to delete table', 'error');
+      }
+    } catch {
+      showToast('Error deleting table', 'error');
     }
   };
 
@@ -446,8 +496,9 @@ export default function HotelOwnerDashboard() {
                          dashboardData?.hotel?.currency === 'INR' ? '₹' : 
                          dashboardData?.hotel?.currency === 'GBP' ? '£' : '$';
 
+  const displayedTables = hotelTables.length > 0 ? hotelTables : tables;
   const occupiedRoomsCount = rooms.filter(r => r.status === 'OCCUPIED').length;
-  const occupiedTablesCount = tables.filter(t => t.status === 'OCCUPIED').length;
+  const occupiedTablesCount = displayedTables.filter(t => t.status === 'OCCUPIED').length;
 
   const navSections = [
     {
@@ -1394,7 +1445,7 @@ export default function HotelOwnerDashboard() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Total Tables</span>
-                <span className="text-2xl font-black text-slate-900">{tables.length}</span>
+                <span className="text-2xl font-black text-slate-900">{displayedTables.length}</span>
                 <span className="text-[10px] font-bold text-slate-400 block mt-1">Floor capacity</span>
               </div>
               <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
@@ -1406,7 +1457,7 @@ export default function HotelOwnerDashboard() {
               </div>
               <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Available Tables</span>
-                <span className="text-2xl font-black text-emerald-600">{Math.max(0, tables.length - occupiedTablesCount)}</span>
+                <span className="text-2xl font-black text-emerald-600">{Math.max(0, displayedTables.length - occupiedTablesCount)}</span>
                 <span className="text-[10px] font-bold text-emerald-600 block mt-1 flex items-center">
                   <CheckCircle2 className="w-3 h-3 mr-1" /> Ready for seating
                 </span>
@@ -1420,7 +1471,7 @@ export default function HotelOwnerDashboard() {
 
             {/* Tables Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {tables.map(table => {
+              {displayedTables.map(table => {
                 const isOccupied = table.status === 'OCCUPIED';
                 const currentOrder = orders.find(o => o.id === table.currentOrderId || (o.tableNumber === table.number && o.status !== 'PAID'));
                 const orderTotal = currentOrder?.items?.reduce((s, i) => s + (i.price * i.quantity), 0) || 0;
@@ -1508,12 +1559,7 @@ export default function HotelOwnerDashboard() {
                           </>
                         ) : (
                           <button
-                            onClick={() => {
-                              if (window.confirm(`Remove Table ${table.number} from floor plan?`)) {
-                                deleteTable(table.number);
-                                showToast(`Table ${table.number} removed`);
-                              }
-                            }}
+                            onClick={() => handleDeleteTableAction(table.number)}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                             title="Delete Table"
                           >
@@ -2380,6 +2426,16 @@ export default function HotelOwnerDashboard() {
           onClose={() => {
             setBillingOrder(null);
             setBillingTableNumber(null);
+          }}
+          onSettle={async () => {
+            if (billingOrder) {
+              await updateOrderStatus(billingOrder.id, 'PAID');
+              await handleFreeTableAction(billingTableNumber);
+              setBillingOrder(null);
+              setBillingTableNumber(null);
+              showToast(`Table ${billingTableNumber} bill settled and freed!`);
+              fetchHotelTables();
+            }
           }}
         />
       )}

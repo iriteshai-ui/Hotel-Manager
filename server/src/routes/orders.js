@@ -6,13 +6,14 @@ const router = Router();
 
 router.post('/', async (req, res) => {
   try {
-    const { tableNumber, items } = req.body || {};
+    const { tableNumber, items, hotelId: bodyHotelId } = req.body || {};
+    const hotelId = bodyHotelId || req.headers['x-hotel-id'] || req.user?.hotel_id || null;
     const num = parseInt(tableNumber, 10);
     if (!num) {
       return res.status(400).json({ error: 'Valid table number is required' });
     }
 
-    const newOrder = await db.placeOrder(num, items || []);
+    const newOrder = await db.placeOrder(num, items || [], hotelId);
     stompBroker.broadcast('/topic/order_added', newOrder);
 
     const tableUpdate = {
@@ -21,7 +22,8 @@ router.post('/', async (req, res) => {
       name: `Table ${num}`,
       status: 'OCCUPIED',
       currentOrderId: newOrder.id,
-      capacity: 4
+      capacity: 4,
+      hotelId
     };
     stompBroker.broadcast('/topic/table_updated', tableUpdate);
 
@@ -34,7 +36,8 @@ router.post('/', async (req, res) => {
 
 router.get('/', async (req, res) => {
   try {
-    const orders = await db.getAllOrders();
+    const hotelId = req.headers['x-hotel-id'] || req.user?.hotel_id || req.query.hotelId || null;
+    const orders = await db.getAllOrders(hotelId);
     res.json(orders);
   } catch (err) {
     console.error('Error fetching orders:', err.message);
@@ -44,7 +47,8 @@ router.get('/', async (req, res) => {
 
 router.get('/active', async (req, res) => {
   try {
-    const orders = await db.getActiveOrders();
+    const hotelId = req.headers['x-hotel-id'] || req.user?.hotel_id || req.query.hotelId || null;
+    const orders = await db.getActiveOrders(hotelId);
     res.json(orders);
   } catch (err) {
     console.error('Error fetching active orders:', err.message);

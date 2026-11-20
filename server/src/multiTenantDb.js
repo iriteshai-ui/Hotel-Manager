@@ -223,7 +223,7 @@ export async function initMultiTenantSchema() {
         { num: '102', cat: 'Standard Room', price: 180, status: 'AVAILABLE', floor: 1, amenities: ['King Bed', 'Wi-Fi'] },
         { num: '201', cat: 'Deluxe Suite', price: 290, status: 'OCCUPIED', floor: 2, amenities: ['Ocean View', 'Balcony', 'Mini Bar'] },
         { num: '202', cat: 'Deluxe Suite', price: 290, status: 'AVAILABLE', floor: 2, amenities: ['Ocean View', 'Balcony', 'Mini Bar'] },
-        { num: '301', cat: 'Executive Suite', price: 420, status: 'OCCUPIED', floor: 3, amenities: ['Jacuzzi', 'Ocean View', 'Butler Service'] },
+        { num: '301', cat: 'Executive Suite', price: 420, status: 'OCCUPIED', floor: 3, amenities: ['Jacuzzi', 'Ocean View', 'Butler Service'] }, 
         { num: '302', cat: 'Executive Suite', price: 420, status: 'RESERVED', floor: 3, amenities: ['Jacuzzi', 'Ocean View', 'Butler Service'] },
         { num: '401', cat: 'Presidential Penthouse', price: 850, status: 'OCCUPIED', floor: 4, amenities: ['Private Terrace', 'Plunge Pool', 'Personal Chef'] },
         { num: '402', cat: 'Deluxe Suite', price: 310, status: 'AVAILABLE', floor: 4, amenities: ['Terrace', 'Mini Bar'] },
@@ -793,11 +793,16 @@ export const multiTenantDb = {
   },
 
   async createHotelRoom(hotelId, { roomNumber, category, pricePerNight, floor = 1, amenities = [] }) {
+    const amenitiesArr = Array.isArray(amenities)
+      ? amenities
+      : typeof amenities === 'string'
+        ? amenities.split(',').map(s => s.trim()).filter(Boolean)
+        : [];
     const res = await pool.query(`
       INSERT INTO hotel_rooms (hotel_id, room_number, category, price_per_night, status, floor, amenities)
       VALUES ($1, $2, $3, $4, 'AVAILABLE', $5, $6)
       RETURNING *;
-    `, [hotelId, roomNumber, category, parseFloat(pricePerNight), parseInt(floor, 10), amenities]);
+    `, [hotelId, roomNumber, category, parseFloat(pricePerNight), parseInt(floor, 10), amenitiesArr]);
     return res.rows[0];
   },
 
@@ -857,12 +862,15 @@ export const multiTenantDb = {
 
     return {
       grossSales: gross,
+      grossRevenue: gross,
       netSales: net,
+      netRevenue: net,
       totalCollections: parseFloat(row.total_collections),
       pendingPayments: parseFloat(row.pending_payments),
       totalDiscounts: disc,
       totalRefunds: refunds,
-      totalTaxes: parseFloat(row.total_taxes)
+      totalTaxes: parseFloat(row.total_taxes),
+      taxCollected: parseFloat(row.total_taxes)
     };
   },
 

@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function BillModal({ order, tableNumber, onClose }) {
+export default function BillModal({ order, tableNumber, onClose, onSettle }) {
   if (!order) return null;
 
   const items = order.items || [];
@@ -92,10 +92,18 @@ export default function BillModal({ order, tableNumber, onClose }) {
 
           <p className="text-center text-xs text-cream-dim opacity-50 mt-4 font-medium">Thank you for dining with us ✨</p>
 
-          <div className="mt-6">
+          <div className="mt-6 space-y-2">
             <button onClick={handlePrint} className="w-full py-3 rounded-2xl bg-brand border border-brand text-white text-xs font-black uppercase tracking-widest hover:bg-brand-hover transition-all cursor-pointer">
               🖨️ Print Bill
             </button>
+            {onSettle && (
+              <button
+                onClick={onSettle}
+                className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-widest transition-all cursor-pointer shadow-lg shadow-emerald-600/20"
+              >
+                ✓ Settle Bill & Free Table
+              </button>
+            )}
           </div>
           <button onClick={onClose} className="w-full mt-3 py-3 rounded-2xl text-cream-dim text-xs font-bold hover:text-cream transition-colors cursor-pointer">
             Close

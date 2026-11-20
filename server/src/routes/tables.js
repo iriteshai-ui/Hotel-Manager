@@ -6,7 +6,8 @@ const router = Router();
 
 router.get('/', async (req, res) => {
   try {
-    const tables = await db.getTables();
+    const hotelId = req.headers['x-hotel-id'] || req.user?.hotel_id || req.query.hotelId || null;
+    const tables = await db.getTables(hotelId);
     res.json(tables);
   } catch (err) {
     console.error('Error fetching tables:', err.message);
@@ -16,15 +17,16 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { number, capacity = 4 } = req.body || {};
+    const { number, capacity = 4, hotelId: bodyHotelId } = req.body || {};
+    const hotelId = bodyHotelId || req.headers['x-hotel-id'] || req.user?.hotel_id || null;
     const num = parseInt(number, 10);
     if (!num || num < 1) {
       return res.status(400).json({ error: 'Valid table number is required' });
     }
 
-    const table = await db.addTable(num, capacity);
+    const table = await db.addTable(num, capacity, hotelId);
     if (!table) {
-      return res.status(400).json({ error: `Table ${num} already exists` });
+      return res.status(400).json({ error: `Table ${num} already exists in this hotel` });
     }
 
     stompBroker.broadcast('/topic/table_added', table);
@@ -37,13 +39,14 @@ router.post('/', async (req, res) => {
 
 router.delete('/:number', async (req, res) => {
   try {
+    const hotelId = req.headers['x-hotel-id'] || req.user?.hotel_id || req.query.hotelId || null;
     const num = parseInt(req.params.number, 10);
-    const success = await db.deleteTable(num);
+    const success = await db.deleteTable(num, hotelId);
     if (!success) {
       return res.status(404).json({ error: 'Table not found' });
     }
 
-    stompBroker.broadcast('/topic/table_deleted', { id: `t${num}`, number: num });
+    stompBroker.broadcast('/topic/table_deleted', { id: `t${num}`, number: num, hotelId });
     res.json({ message: 'Table deleted' });
   } catch (err) {
     console.error('Error deleting table:', err.message);
@@ -53,8 +56,9 @@ router.delete('/:number', async (req, res) => {
 
 router.put('/:number/free', async (req, res) => {
   try {
+    const hotelId = req.headers['x-hotel-id'] || req.user?.hotel_id || req.query.hotelId || null;
     const num = parseInt(req.params.number, 10);
-    const table = await db.freeTable(num);
+    const table = await db.freeTable(num, hotelId);
     if (!table) {
       return res.status(404).json({ error: 'Table not found' });
     }

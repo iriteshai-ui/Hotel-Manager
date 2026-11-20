@@ -169,7 +169,8 @@ function formatTable(row) {
     name: row.name || `Table ${row.number}`,
     status: row.status || 'AVAILABLE',
     currentOrderId: row.current_order_id || null,
-    capacity: row.capacity || 4
+    capacity: row.capacity || 4,
+    hotelId: row.hotel_id || null
   };
 }
 
@@ -181,12 +182,15 @@ function formatOrder(row) {
   } catch {
     items = [];
   }
+  const totalVal = parseFloat(row.total_price);
   return {
     id: row.id,
     tableNumber: row.table_number,
     items,
-    totalPrice: parseFloat(row.total_price),
+    totalPrice: totalVal,
+    total: totalVal,
     status: row.status,
+    hotelId: row.hotel_id || null,
     timestamp: row.timestamp instanceof Date ? row.timestamp.toISOString() : row.timestamp
   };
 }
@@ -268,56 +272,92 @@ export const db = {
   },
 
   // Tables
-  async getTables() {
+  async getTables(hotelId = null) {
+    if (hotelId) {
+      const res = await pool.query('SELECT * FROM restaurant_tables WHERE hotel_id = $1 ORDER BY number ASC;', [hotelId]);
+      return res.rows.map(formatTable);
+    }
     const res = await pool.query('SELECT * FROM restaurant_tables ORDER BY number ASC;');
     return res.rows.map(formatTable);
   },
 
-  async getTableByNumber(number) {
-    const res = await pool.query('SELECT * FROM restaurant_tables WHERE number = $1;', [parseInt(number, 10)]);
+  async getTableByNumber(number, hotelId = null) {
+    const num = parseInt(number, 10);
+    if (hotelId) {
+      const res = await pool.query('SELECT * FROM restaurant_tables WHERE number = $1 AND hotel_id = $2;', [num, hotelId]);
+      return formatTable(res.rows[0]);
+    }
+    const res = await pool.query('SELECT * FROM restaurant_tables WHERE number = $1;', [num]);
     return formatTable(res.rows[0]);
   },
 
-  async addTable(number, capacity = 4) {
+  async addTable(number, capacity = 4, hotelId = null) {
     const num = parseInt(number, 10);
-    const existing = await this.getTableByNumber(num);
+    const existing = await this.getTableByNumber(num, hotelId);
     if (existing) return null;
 
     const res = await pool.query(
-      'INSERT INTO restaurant_tables (number, name, status, capacity) VALUES ($1, $2, $3, $4) RETURNING *;',
-      [num, `Table ${num}`, 'AVAILABLE', parseInt(capacity, 10) || 4]
+      'INSERT INTO restaurant_tables (number, name, status, capacity, hotel_id) VALUES ($1, $2, $3, $4, $5) RETURNING *;',
+      [num, `Table ${num}`, 'AVAILABLE', parseInt(capacity, 10) || 4, hotelId || null]
     );
     return formatTable(res.rows[0]);
   },
 
-  async deleteTable(number) {
+  async deleteTable(number, hotelId = null) {
     const num = parseInt(number, 10);
-    const res = await pool.query('DELETE FROM restaurant_tables WHERE number = $1 RETURNING number;', [num]);
+    let res;
+    if (hotelId) {
+      res = await pool.query('DELETE FROM restaurant_tables WHERE number = $1 AND hotel_id = $2 RETURNING number;', [num, hotelId]);
+    } else {
+      res = await pool.query('DELETE FROM restaurant_tables WHERE number = $1 RETURNING number;', [num]);
+    }
     return res.rowCount > 0;
   },
 
-  async freeTable(number) {
-    const num = parseInt(number, 10);
-    const res = await pool.query(
-      'UPDATE restaurant_tables SET status = $1, current_order_id = NULL WHERE number = $2 RETURNING *;',
-      ['AVAILABLE', num]
-    );
-    return formatTable(res.rows[0]);
-  },
-
-  async updateTableStatus(number, status, currentOrderId = undefined) {
+  async freeTable(number, hotelId = null) {
     const num = parseInt(number, 10);
     let res;
-    if (currentOrderId !== undefined) {
+    if (hotelId) {
       res = await pool.query(
-        'UPDATE restaurant_tables SET status = $1, current_order_id = $2 WHERE number = $3 RETURNING *;',
-        [status, currentOrderId, num]
+        'UPDATE restaurant_tables SET status = $1, current_order_id = NULL WHERE number = $2 AND hotel_id = $3 RETURNING *;',
+        ['AVAILABLE', num, hotelId]
       );
     } else {
       res = await pool.query(
-        'UPDATE restaurant_tables SET status = $1 WHERE number = $2 RETURNING *;',
-        [status, num]
+        'UPDATE restaurant_tables SET status = $1, current_order_id = NULL WHERE number = $2 RETURNING *;',
+        ['AVAILABLE', num]
       );
+    }
+    return formatTable(res.rows[0]);
+  },
+
+  async updateTableStatus(number, status, currentOrderId = undefined, hotelId = null) {
+    const num = parseInt(number, 10);
+    let res;
+    if (hotelId) {
+      if (currentOrderId !== undefined) {
+        res = await pool.query(
+          'UPDATE restaurant_tables SET status = $1, current_order_id = $2 WHERE number = $3 AND hotel_id = $4 RETURNING *;',
+          [status, currentOrderId, num, hotelId]
+        );
+      } else {
+        res = await pool.query(
+          'UPDATE restaurant_tables SET status = $1 WHERE number = $2 AND hotel_id = $3 RETURNING *;',
+          [status, num, hotelId]
+        );
+      }
+    } else {
+      if (currentOrderId !== undefined) {
+        res = await pool.query(
+          'UPDATE restaurant_tables SET status = $1, current_order_id = $2 WHERE number = $3 RETURNING *;',
+          [status, currentOrderId, num]
+        );
+      } else {
+        res = await pool.query(
+          'UPDATE restaurant_tables SET status = $1 WHERE number = $2 RETURNING *;',
+          [status, num]
+        );
+      }
     }
     return formatTable(res.rows[0]);
   },
@@ -483,12 +523,20 @@ export const db = {
   },
 
   // Orders
-  async getAllOrders() {
+  async getAllOrders(hotelId = null) {
+    if (hotelId) {
+      const res = await pool.query('SELECT * FROM orders WHERE hotel_id = $1 ORDER BY timestamp DESC;', [hotelId]);
+      return res.rows.map(formatOrder);
+    }
     const res = await pool.query('SELECT * FROM orders ORDER BY timestamp DESC;');
     return res.rows.map(formatOrder);
   },
 
-  async getActiveOrders() {
+  async getActiveOrders(hotelId = null) {
+    if (hotelId) {
+      const res = await pool.query('SELECT * FROM orders WHERE status != $1 AND hotel_id = $2 ORDER BY timestamp ASC;', ['PAID', hotelId]);
+      return res.rows.map(formatOrder);
+    }
     const res = await pool.query('SELECT * FROM orders WHERE status != $1 ORDER BY timestamp ASC;', ['PAID']);
     return res.rows.map(formatOrder);
   },
@@ -498,19 +546,19 @@ export const db = {
     return formatOrder(res.rows[0]);
   },
 
-  async placeOrder(tableNumber, items) {
+  async placeOrder(tableNumber, items, hotelId = null) {
     const num = parseInt(tableNumber, 10);
     const id = crypto.randomUUID();
     const totalPrice = (items || []).reduce((sum, item) => sum + (item.price * item.quantity), 0);
     const itemsJson = JSON.stringify(items || []);
 
     const res = await pool.query(
-      'INSERT INTO orders (id, table_number, items_json, total_price, status, timestamp) VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING *;',
-      [id, num, itemsJson, totalPrice, 'PLACED']
+      'INSERT INTO orders (id, table_number, items_json, total_price, status, hotel_id, timestamp) VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING *;',
+      [id, num, itemsJson, totalPrice, 'PLACED', hotelId || null]
     );
 
     // Update table status to OCCUPIED
-    await this.updateTableStatus(num, 'OCCUPIED', id);
+    await this.updateTableStatus(num, 'OCCUPIED', id, hotelId);
 
     return formatOrder(res.rows[0]);
   },
@@ -525,7 +573,7 @@ export const db = {
     const order = formatOrder(res.rows[0]);
 
     if (status === 'PAID') {
-      await this.freeTable(order.tableNumber);
+      await this.freeTable(order.tableNumber, order.hotelId);
     }
 
     return order;
