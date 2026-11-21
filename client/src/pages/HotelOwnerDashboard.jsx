@@ -8,7 +8,7 @@ import {
   Settings, FileText, CheckCircle2, XCircle, Search, Plus, ExternalLink, 
   RefreshCw, LogOut, ArrowUpRight, BarChart3, CreditCard, Shield, 
   Clock, Download, Filter, UserCheck, AlertCircle, Wrench, Sparkles, ChevronRight,
-  UtensilsCrossed, ChefHat, Receipt, Trash2, Printer, Check
+  UtensilsCrossed, ChefHat, Receipt, Trash2, Printer, Check, Edit3
 } from 'lucide-react';
 
 export default function HotelOwnerDashboard() {
@@ -64,6 +64,18 @@ export default function HotelOwnerDashboard() {
   const [orderItemSearch, setOrderItemSearch] = useState('');
   const [orderItemCategory, setOrderItemCategory] = useState('ALL');
   const [orderSubmitting, setOrderSubmitting] = useState(false);
+
+  // Hotel Property Settings State
+  const [showEditHotelModal, setShowEditHotelModal] = useState(false);
+  const [editHotelForm, setEditHotelForm] = useState({
+    name: '',
+    currency: 'INR',
+    taxPercentage: 10,
+    contactEmail: '',
+    contactPhone: '',
+    status: 'ACTIVE'
+  });
+  const [savingHotel, setSavingHotel] = useState(false);
 
   // Filters & Search State
   const [bookingStatusFilter, setBookingStatusFilter] = useState('ALL');
@@ -644,6 +656,97 @@ export default function HotelOwnerDashboard() {
       showToast('Network error while placing order', 'error');
     } finally {
       setOrderSubmitting(false);
+    }
+  };
+
+  const handleOpenEditHotelModal = () => {
+    if (!dashboardData?.hotel) return;
+    setEditHotelForm({
+      name: dashboardData.hotel.name || '',
+      currency: dashboardData.hotel.currency || 'INR',
+      taxPercentage: dashboardData.hotel.taxPercentage ?? 10,
+      contactEmail: dashboardData.hotel.contactEmail || '',
+      contactPhone: dashboardData.hotel.contactPhone || '',
+      status: dashboardData.hotel.status || 'ACTIVE'
+    });
+    setShowEditHotelModal(true);
+  };
+
+  const handleSaveHotelSettings = async (e) => {
+    e?.preventDefault();
+    if (!editHotelForm.name.trim()) {
+      showToast('Hotel name cannot be empty', 'error');
+      return;
+    }
+    setSavingHotel(true);
+    try {
+      const res = await fetch(getQueryUrl('/api/hotel-owner/hotel'), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify(editHotelForm)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const updatedHotel = data.hotel || data;
+        setDashboardData(prev => prev ? {
+          ...prev,
+          hotel: {
+            ...prev.hotel,
+            name: updatedHotel.name || editHotelForm.name,
+            currency: updatedHotel.currency || editHotelForm.currency,
+            taxPercentage: updatedHotel.tax_percentage ?? updatedHotel.taxPercentage ?? editHotelForm.taxPercentage,
+            contactEmail: updatedHotel.contact_email ?? updatedHotel.contactEmail ?? editHotelForm.contactEmail,
+            contactPhone: updatedHotel.contact_phone ?? updatedHotel.contactPhone ?? editHotelForm.contactPhone,
+            status: updatedHotel.status || editHotelForm.status
+          }
+        } : null);
+        setShowEditHotelModal(false);
+        showToast('Hotel properties updated successfully!');
+        fetchDashboardData();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || 'Failed to update hotel properties', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Network error updating hotel properties', 'error');
+    } finally {
+      setSavingHotel(false);
+    }
+  };
+
+  const handleToggleHotelPropertyStatus = async () => {
+    if (!dashboardData?.hotel) return;
+    const currentStatus = dashboardData.hotel.status || 'ACTIVE';
+    const newStatus = currentStatus === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    try {
+      const res = await fetch(getQueryUrl('/api/hotel-owner/hotel/status'), {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (res.ok) {
+        setDashboardData(prev => prev ? {
+          ...prev,
+          hotel: {
+            ...prev.hotel,
+            status: newStatus
+          }
+        } : null);
+        showToast(`Hotel is now ${newStatus === 'ACTIVE' ? 'Activated' : 'Deactivated'}!`);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || 'Failed to update status', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Network error updating status', 'error');
     }
   };
 
@@ -1563,10 +1666,35 @@ export default function HotelOwnerDashboard() {
         {/* TAB 8: PROPERTY SETTINGS                                    */}
         {/* ─────────────────────────────────────────────────────────── */}
         {activeTab === 'settings' && dashboardData && (
-          <div className="p-8 max-w-2xl space-y-6 animate-fade-in">
-            <div>
-              <h3 className="text-xl font-black text-slate-900">Property Configuration & Policies</h3>
-              <p className="text-xs text-slate-500">Theme tokens, tax percentages, and guest menu configurations</p>
+          <div className="p-8 max-w-3xl space-y-6 animate-fade-in">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Hotel Property Configuration & Policies</h3>
+                <p className="text-xs text-slate-500">Manage hotel profile, contact information, tax rates, and active/inactive operational status.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleToggleHotelPropertyStatus}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 shadow-xs ${
+                    dashboardData.hotel.status === 'ACTIVE'
+                      ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                  }`}
+                  title={dashboardData.hotel.status === 'ACTIVE' ? 'Deactivate Hotel' : 'Activate Hotel'}
+                >
+                  <span className={`w-2 h-2 rounded-full ${dashboardData.hotel.status === 'ACTIVE' ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                  <span>{dashboardData.hotel.status === 'ACTIVE' ? 'Deactivate Hotel' : 'Activate Hotel'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenEditHotelModal}
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md shadow-amber-600/20"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Edit Details</span>
+                </button>
+              </div>
             </div>
 
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
@@ -1575,15 +1703,48 @@ export default function HotelOwnerDashboard() {
                 <span className="text-sm font-bold text-slate-900">{dashboardData.hotel.name}</span>
               </div>
               <div className="flex justify-between items-center py-3 border-b border-slate-100">
-                <span className="text-xs font-bold text-slate-500 uppercase">Tenant Slug</span>
-                <span className="text-sm font-mono text-indigo-600 font-bold">/{dashboardData.hotel.slug}</span>
+                <span className="text-xs font-bold text-slate-500 uppercase">Operational Status</span>
+                <span
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                    dashboardData.hotel.status === 'ACTIVE'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-rose-50 text-rose-700 border-rose-200'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${dashboardData.hotel.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                  {dashboardData.hotel.status === 'ACTIVE' ? 'Active & Open' : 'Inactive / Closed'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center py-3 border-b border-slate-100">
+                <span className="text-xs font-bold text-slate-500 uppercase">Public Guest Menu</span>
+                <a
+                  href={`/menu?hotel=${dashboardData.hotel.slug}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 hover:text-amber-800 bg-amber-50 px-3 py-1 rounded-lg border border-amber-200 no-underline"
+                >
+                  <span>/{dashboardData.hotel.slug}</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+              <div className="flex justify-between items-center py-3 border-b border-slate-100">
+                <span className="text-xs font-bold text-slate-500 uppercase">Concierge / Contact Phone</span>
+                <span className="text-sm font-mono font-bold text-slate-900">
+                  {dashboardData.hotel.contactPhone || '—'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center py-3 border-b border-slate-100">
+                <span className="text-xs font-bold text-slate-500 uppercase">Contact Email</span>
+                <span className="text-sm font-mono text-slate-700">
+                  {dashboardData.hotel.contactEmail || '—'}
+                </span>
               </div>
               <div className="flex justify-between items-center py-3 border-b border-slate-100">
                 <span className="text-xs font-bold text-slate-500 uppercase">Settlement Currency</span>
                 <span className="text-sm font-bold text-slate-900">{dashboardData.hotel.currency} ({currencySymbol})</span>
               </div>
               <div className="flex justify-between items-center py-3">
-                <span className="text-xs font-bold text-slate-500 uppercase">Default Room Tax</span>
+                <span className="text-xs font-bold text-slate-500 uppercase">Default Room & Dining Tax</span>
                 <span className="text-sm font-bold text-slate-900">{dashboardData.hotel.taxPercentage}%</span>
               </div>
             </div>
@@ -2875,6 +3036,138 @@ export default function HotelOwnerDashboard() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── EDIT HOTEL DETAILS MODAL ── */}
+      {showEditHotelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl p-6 sm:p-8 space-y-5">
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-black text-slate-900">Edit Hotel Properties</h3>
+                <p className="text-xs text-slate-500">Update property name, contact details, and tax</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEditHotelModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveHotelSettings} className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1.5">Property Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editHotelForm.name}
+                  onChange={e => setEditHotelForm(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="e.g. Hotel Lay Bhari"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs font-semibold focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1.5">Contact Phone</label>
+                  <input
+                    type="text"
+                    value={editHotelForm.contactPhone}
+                    onChange={e => setEditHotelForm(prev => ({ ...prev, contactPhone: e.target.value }))}
+                    placeholder="e.g. 898789798"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs font-semibold focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1.5">Contact Email</label>
+                  <input
+                    type="email"
+                    value={editHotelForm.contactEmail}
+                    onChange={e => setEditHotelForm(prev => ({ ...prev, contactEmail: e.target.value }))}
+                    placeholder="e.g. contact@hotel.com"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs font-semibold focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1.5">Currency</label>
+                  <select
+                    value={editHotelForm.currency}
+                    onChange={e => setEditHotelForm(prev => ({ ...prev, currency: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs font-bold focus:outline-none focus:border-amber-500 bg-white cursor-pointer"
+                  >
+                    <option value="INR">INR (₹)</option>
+                    <option value="USD">USD ($)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="GBP">GBP (£)</option>
+                    <option value="AED">AED (د.إ)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1.5">Tax / GST (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={editHotelForm.taxPercentage}
+                    onChange={e => setEditHotelForm(prev => ({ ...prev, taxPercentage: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs font-semibold focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1.5">Tenant Status</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditHotelForm(prev => ({ ...prev, status: 'ACTIVE' }))}
+                    className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      editHotelForm.status === 'ACTIVE'
+                        ? 'bg-emerald-500 text-white border-emerald-600 shadow-sm'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    Active
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditHotelForm(prev => ({ ...prev, status: 'INACTIVE' }))}
+                    className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      editHotelForm.status === 'INACTIVE'
+                        ? 'bg-rose-500 text-white border-rose-600 shadow-sm'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    Inactive
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditHotelModal(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingHotel}
+                  className="flex-2 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-black uppercase tracking-wider shadow-md shadow-amber-600/20 transition-all cursor-pointer"
+                >
+                  {savingHotel ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

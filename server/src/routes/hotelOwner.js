@@ -209,4 +209,52 @@ router.post('/staff', async (req, res) => {
   }
 });
 
+// PUT /api/hotel-owner/hotel - Hotel Owner: Update own hotel details
+router.put('/hotel', async (req, res) => {
+  try {
+    const { name, currency, taxPercentage, contactEmail, contactPhone, status, totalRooms } = req.body || {};
+    const updated = await multiTenantDb.updateHotel(req.targetHotelId, {
+      name,
+      currency,
+      taxPercentage,
+      contactEmail,
+      contactPhone,
+      status,
+      totalRooms
+    });
+    if (!updated) return res.status(404).json({ error: 'Hotel not found' });
+
+    await multiTenantDb.logAudit(req.targetHotelId, req.user.user_id, req.user.username, 'UPDATE_HOTEL_SETTINGS', 'SETTINGS', {
+      hotelName: updated.name,
+      updatedFields: req.body
+    });
+
+    res.json({ success: true, hotel: updated });
+  } catch (err) {
+    console.error('Update hotel error:', err.message);
+    res.status(500).json({ error: 'Failed to update hotel details' });
+  }
+});
+
+// PATCH /api/hotel-owner/hotel/status - Hotel Owner: Toggle hotel active/inactive status
+router.patch('/hotel/status', async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!status || !['ACTIVE', 'INACTIVE'].includes(status.toUpperCase())) {
+      return res.status(400).json({ error: 'Valid status required (ACTIVE or INACTIVE)' });
+    }
+    const updated = await multiTenantDb.toggleHotelStatus(req.targetHotelId, status.toUpperCase());
+    if (!updated) return res.status(404).json({ error: 'Hotel not found' });
+
+    await multiTenantDb.logAudit(req.targetHotelId, req.user.user_id, req.user.username, 'UPDATE_HOTEL_STATUS', 'SETTINGS', {
+      status: status.toUpperCase()
+    });
+
+    res.json({ success: true, hotel: updated });
+  } catch (err) {
+    console.error('Toggle hotel status error:', err.message);
+    res.status(500).json({ error: 'Failed to update hotel status' });
+  }
+});
+
 export default router;

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { db, pool } from '../db.js';
+import { multiTenantDb } from '../multiTenantDb.js';
 
 const router = Router();
 
@@ -220,6 +221,47 @@ router.post('/onboard', async (req, res) => {
   } catch (err) {
     console.error('Hotel onboarding error:', err.message);
     res.status(500).json({ error: 'Failed to onboard hotel property.' });
+  }
+});
+
+// PUT /api/hotels/:id - Hotel Owner / Super Admin update hotel details
+router.put('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!req.user) return res.status(401).json({ error: 'Authentication required' });
+    if (req.user.role !== 'SUPER_ADMIN' && req.user.hotel_id !== id) {
+      return res.status(403).json({ error: 'Forbidden: You can only update your own hotel' });
+    }
+    const { name, currency, taxPercentage, contactEmail, contactPhone, status, totalRooms } = req.body || {};
+    const updated = await multiTenantDb.updateHotel(id, {
+      name, currency, taxPercentage, contactEmail, contactPhone, status, totalRooms
+    });
+    if (!updated) return res.status(404).json({ error: 'Hotel not found' });
+    res.json({ success: true, hotel: updated });
+  } catch (err) {
+    console.error('Error updating hotel:', err.message);
+    res.status(500).json({ error: 'Failed to update hotel' });
+  }
+});
+
+// PATCH /api/hotels/:id/status - Hotel Owner / Super Admin toggle hotel status
+router.patch('/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!req.user) return res.status(401).json({ error: 'Authentication required' });
+    if (req.user.role !== 'SUPER_ADMIN' && req.user.hotel_id !== id) {
+      return res.status(403).json({ error: 'Forbidden: You can only update your own hotel status' });
+    }
+    const { status } = req.body;
+    if (!status || !['ACTIVE', 'INACTIVE'].includes(status.toUpperCase())) {
+      return res.status(400).json({ error: 'Valid status required (ACTIVE/INACTIVE)' });
+    }
+    const updated = await multiTenantDb.toggleHotelStatus(id, status.toUpperCase());
+    if (!updated) return res.status(404).json({ error: 'Hotel not found' });
+    res.json({ success: true, hotel: updated });
+  } catch (err) {
+    console.error('Error toggling hotel status:', err.message);
+    res.status(500).json({ error: 'Failed to update hotel status' });
   }
 });
 
