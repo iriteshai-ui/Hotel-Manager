@@ -4,9 +4,16 @@ import { stompBroker } from '../stomp.js';
 
 const router = Router();
 
+function resolveHotelId(req) {
+  if (req.user && req.user.role !== 'SUPER_ADMIN' && req.user.hotel_id) {
+    return req.user.hotel_id;
+  }
+  return req.headers['x-hotel-id'] || req.query.hotelId || req.body?.hotelId || req.user?.hotel_id || null;
+}
+
 router.get('/', async (req, res) => {
   try {
-    const hotelId = req.headers['x-hotel-id'] || req.user?.hotel_id || req.query.hotelId || null;
+    const hotelId = resolveHotelId(req);
     const tables = await db.getTables(hotelId);
     res.json(tables);
   } catch (err) {
@@ -17,8 +24,8 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { number, capacity = 4, hotelId: bodyHotelId } = req.body || {};
-    const hotelId = bodyHotelId || req.headers['x-hotel-id'] || req.user?.hotel_id || null;
+    const { number, capacity = 4 } = req.body || {};
+    const hotelId = resolveHotelId(req);
     const num = parseInt(number, 10);
     if (!num || num < 1) {
       return res.status(400).json({ error: 'Valid table number is required' });
@@ -39,7 +46,7 @@ router.post('/', async (req, res) => {
 
 router.delete('/:number', async (req, res) => {
   try {
-    const hotelId = req.headers['x-hotel-id'] || req.user?.hotel_id || req.query.hotelId || null;
+    const hotelId = resolveHotelId(req);
     const num = parseInt(req.params.number, 10);
     const success = await db.deleteTable(num, hotelId);
     if (!success) {
@@ -56,7 +63,7 @@ router.delete('/:number', async (req, res) => {
 
 router.put('/:number/free', async (req, res) => {
   try {
-    const hotelId = req.headers['x-hotel-id'] || req.user?.hotel_id || req.query.hotelId || null;
+    const hotelId = resolveHotelId(req);
     const num = parseInt(req.params.number, 10);
     const table = await db.freeTable(num, hotelId);
     if (!table) {

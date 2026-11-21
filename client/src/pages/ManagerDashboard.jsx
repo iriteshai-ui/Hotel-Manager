@@ -32,9 +32,11 @@ export default function ManagerDashboard() {
     isBestseller: false
   });
 
-  // Fetch all onboarded hotels
+  // Fetch onboarded hotels (scoped to tenant for hotel managers)
   useEffect(() => {
-    fetch('/api/hotels')
+    const token = localStorage.getItem('auth_token');
+    const headers = token ? { 'X-Auth-Token': token } : {};
+    fetch('/api/hotels', { headers })
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {

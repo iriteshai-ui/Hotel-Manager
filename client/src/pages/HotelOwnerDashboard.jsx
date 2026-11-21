@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 
 export default function HotelOwnerDashboard() {
-  const { logout, username, role, roles, hotelName: authHotelName, hotelCurrency: authCurrency, login, hasPermission, canAccessModule, isSuperAdmin } = useAuth();
+  const { logout, username, role, roles, hotelName: authHotelName, hotelCurrency: authCurrency, hotelId: authHotelId, hotelSlug: authHotelSlug, login, hasPermission, canAccessModule, isSuperAdmin } = useAuth();
   const { tables, orders, isConnected, addTable, deleteTable, freeTable, updateOrderStatus } = useSocket();
   const [searchParams] = useSearchParams();
   const hotelIdQuery = searchParams.get('hotelId');
@@ -56,6 +56,15 @@ export default function HotelOwnerDashboard() {
     isVeg: true
   });
 
+  // Table Order Placement & Item Management State
+  const [showTableOrderModal, setShowTableOrderModal] = useState(false);
+  const [orderingTableNumber, setOrderingTableNumber] = useState(null);
+  const [activeExistingOrderId, setActiveExistingOrderId] = useState(null);
+  const [orderCart, setOrderCart] = useState([]);
+  const [orderItemSearch, setOrderItemSearch] = useState('');
+  const [orderItemCategory, setOrderItemCategory] = useState('ALL');
+  const [orderSubmitting, setOrderSubmitting] = useState(false);
+
   // Filters & Search State
   const [bookingStatusFilter, setBookingStatusFilter] = useState('ALL');
   const [bookingSearch, setBookingSearch] = useState('');
@@ -83,12 +92,16 @@ export default function HotelOwnerDashboard() {
   const getAuthHeaders = () => {
     const token = localStorage.getItem('auth_token');
     const headers = { 'X-Auth-Token': token };
-    if (hotelIdQuery) headers['x-hotel-id'] = hotelIdQuery;
+    const effectiveHotelId = isSuperAdmin ? (hotelIdQuery || authHotelId) : (authHotelId || localStorage.getItem('auth_hotel_id'));
+    if (effectiveHotelId) headers['x-hotel-id'] = effectiveHotelId;
     return headers;
   };
 
   const getQueryUrl = (base) => {
-    return hotelIdQuery ? `${base}?hotelId=${hotelIdQuery}` : base;
+    if (isSuperAdmin && hotelIdQuery) {
+      return `${base}?hotelId=${hotelIdQuery}`;
+    }
+    return base;
   };
 
   const showToast = (text, type = 'success') => {
@@ -229,10 +242,8 @@ export default function HotelOwnerDashboard() {
   useEffect(() => {
     if (dashboardData?.hotel?.slug) {
       fetchHotelMenu(dashboardData.hotel.slug);
-      fetchHotelTables();
-      fetchHotelOrders();
     }
-  }, [dashboardData?.hotel?.slug, dashboardData?.hotel?.id]);
+  }, [dashboardData?.hotel?.slug]);
 
   useEffect(() => {
     fetchAnalytics();
@@ -498,23 +509,155 @@ export default function HotelOwnerDashboard() {
     setBillingTableNumber(tableNum);
   };
 
-  // Demo Switcher helper to easily showcase multi-tenancy
-  const handleQuickDemoSwitch = async (u, p) => {
-    setLoading(true);
-    await login(u, p);
-    navigate(u === 'superadmin' ? '/superadmin' : '/hotel-dashboard');
-    window.location.reload();
+  const handleOpenNewOrder = (tableNum = null) => {
+    const slug = dashboardData?.hotel?.slug || authHotelSlug;
+    if (slug && hotelMenuItems.length === 0) fetchHotelMenu(slug);
+    const targetNum = tableNum || (displayedTables.find(t => t.status === 'AVAILABLE')?.number || displayedTables[0]?.number || 1);
+    setOrderingTableNumber(targetNum);
+    setActiveExistingOrderId(null);
+    setOrderCart([]);
+    setOrderItemSearch('');
+    setOrderItemCategory('ALL');
+    setShowTableOrderModal(true);
+  };
+
+  const handleOpenAddItems = (order, tableNum) => {
+    const slug = dashboardData?.hotel?.slug || authHotelSlug;
+    if (slug && hotelMenuItems.length === 0) fetchHotelMenu(slug);
+    setOrderingTableNumber(tableNum);
+    setActiveExistingOrderId(order.id);
+    setOrderCart([]);
+    setOrderItemSearch('');
+    setOrderItemCategory('ALL');
+    setShowTableOrderModal(true);
+  };
+
+  const handleOrderCartAdd = (item) => {
+    setOrderCart(prev => {
+      const existing = prev.find(i => (i.menuItemId || i.id) === (item.id || item.menuItemId));
+      if (existing) {
+        return prev.map(i => (i.menuItemId || i.id) === (item.id || item.menuItemId) ? { ...i, quantity: i.quantity + 1 } : i);
+      }
+      return [...prev, {
+        menuItemId: item.id,
+        name: item.name,
+        price: parseFloat(item.price) || 0,
+        quantity: 1,
+        category: item.category || 'Mains'
+      }];
+    });
+  };
+
+  const handleOrderCartRemove = (itemId) => {
+    setOrderCart(prev => prev.reduce((acc, i) => {
+      if ((i.menuItemId || i.id) === itemId) {
+        if (i.quantity > 1) acc.push({ ...i, quantity: i.quantity - 1 });
+      } else {
+        acc.push(i);
+      }
+      return acc;
+    }, []));
+  };
+
+  const handleOrderCartDelete = (itemId) => {
+    setOrderCart(prev => prev.filter(i => (i.menuItemId || i.id) !== itemId));
+  };
+
+  const handleUpdateOrderStatusAction = async (orderId, newStatus) => {
+    try {
+      if (updateOrderStatus) updateOrderStatus(orderId, newStatus);
+      const res = await fetch(`/api/orders/${orderId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setHotelOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+        showToast(`Order status updated to ${newStatus}`);
+        fetchHotelOrders();
+        fetchHotelTables();
+      } else {
+        showToast('Failed to update order status', 'error');
+      }
+    } catch {
+      showToast('Error updating order status', 'error');
+    }
+  };
+
+  const handleSubmitTableOrder = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!orderingTableNumber) {
+      showToast('Please select a table number', 'error');
+      return;
+    }
+    if (orderCart.length === 0) {
+      showToast('Please select at least one dish for the order', 'error');
+      return;
+    }
+
+    setOrderSubmitting(true);
+    try {
+      if (activeExistingOrderId) {
+        const res = await fetch(`/api/orders/${activeExistingOrderId}/items`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          body: JSON.stringify({ items: orderCart })
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          setHotelOrders(prev => prev.map(o => o.id === activeExistingOrderId ? updated : o));
+          showToast(`Added ${orderCart.length} dish(es) to Table ${orderingTableNumber} order!`);
+          setShowTableOrderModal(false);
+          setOrderCart([]);
+          fetchHotelOrders();
+          fetchHotelTables();
+        } else {
+          const err = await res.json().catch(() => ({}));
+          showToast(err.error || 'Failed to add items to order', 'error');
+        }
+      } else {
+        const effHotel = effectiveHotelId || dashboardData?.hotel?.id;
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          body: JSON.stringify({
+            tableNumber: orderingTableNumber,
+            items: orderCart,
+            hotelId: effHotel
+          })
+        });
+        if (res.ok) {
+          const created = await res.json();
+          setHotelOrders(prev => [created, ...prev]);
+          showToast(`Order created for Table ${orderingTableNumber} and sent to Kitchen!`);
+          setShowTableOrderModal(false);
+          setOrderCart([]);
+          fetchHotelOrders();
+          fetchHotelTables();
+        } else {
+          const err = await res.json().catch(() => ({}));
+          showToast(err.error || 'Failed to create table order', 'error');
+        }
+      }
+    } catch {
+      showToast('Network error while placing order', 'error');
+    } finally {
+      setOrderSubmitting(false);
+    }
   };
 
   const currencySymbol = dashboardData?.hotel?.currency === 'EUR' ? '€' : 
                          dashboardData?.hotel?.currency === 'INR' ? '₹' : 
                          dashboardData?.hotel?.currency === 'GBP' ? '£' : '$';
 
+  const effectiveHotelId = isSuperAdmin ? (hotelIdQuery || authHotelId) : (authHotelId || localStorage.getItem('auth_hotel_id'));
   const displayedTables = hotelTables.length > 0 ? hotelTables : tables;
   const displayedOrders = useMemo(() => {
     const map = new Map();
     (hotelOrders || []).forEach(o => map.set(o.id, o));
     (orders || []).forEach(o => {
+      if (effectiveHotelId && o.hotelId && o.hotelId !== effectiveHotelId) return;
       if (map.has(o.id)) {
         map.set(o.id, { ...map.get(o.id), ...o });
       } else {
@@ -522,7 +665,31 @@ export default function HotelOwnerDashboard() {
       }
     });
     return Array.from(map.values());
-  }, [hotelOrders, orders]);
+  }, [hotelOrders, orders, effectiveHotelId]);
+
+  const orderModalCategories = useMemo(() => {
+    return ['ALL', ...new Set((hotelMenuItems || []).map(i => i.category).filter(Boolean))];
+  }, [hotelMenuItems]);
+
+  const filteredOrderDishes = useMemo(() => {
+    const q = (orderItemSearch || '').toLowerCase().trim();
+    return (hotelMenuItems || []).filter(item => {
+      const matchCat = orderItemCategory === 'ALL' || item.category === orderItemCategory;
+      const matchSearch = !q || 
+        item.name.toLowerCase().includes(q) || 
+        (item.description || '').toLowerCase().includes(q) ||
+        (item.category || '').toLowerCase().includes(q);
+      return matchCat && matchSearch;
+    });
+  }, [hotelMenuItems, orderItemCategory, orderItemSearch]);
+
+  const orderCartSubtotal = useMemo(() => {
+    return orderCart.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 1)), 0);
+  }, [orderCart]);
+
+  const orderTaxRate = parseFloat(dashboardData?.hotel?.taxPercentage || 10);
+  const orderCartTax = (orderCartSubtotal * orderTaxRate) / 100;
+  const orderCartTotal = orderCartSubtotal + orderCartTax;
   const occupiedRoomsCount = rooms.filter(r => r.status === 'OCCUPIED').length;
   const occupiedTablesCount = displayedTables.filter(t => t.status === 'OCCUPIED').length;
 
@@ -691,33 +858,11 @@ export default function HotelOwnerDashboard() {
               </p>
             </div>
 
-            {/* Quick Demo Switcher */}
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-[11px] font-bold self-start lg:self-auto">
-              <span className="text-slate-400 px-2 text-[10px] uppercase font-black">Demo Tenant:</span>
-              <button
-                onClick={() => handleQuickDemoSwitch('owner_laybhari', 'password123')}
-                className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                  dashboardData?.hotel?.slug === 'laybhari' ? 'bg-white shadow-sm text-amber-700 font-black' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Hotel Lay Bhari (INR ₹)
-              </button>
-              <button
-                onClick={() => handleQuickDemoSwitch('owner_hotela', 'password123')}
-                className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                  dashboardData?.hotel?.slug === 'grand-horizon' ? 'bg-white shadow-sm text-blue-700 font-black' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Hotel A (USD $)
-              </button>
-              <button
-                onClick={() => handleQuickDemoSwitch('owner_hotelb', 'password123')}
-                className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                  dashboardData?.hotel?.slug === 'royal-palms' ? 'bg-white shadow-sm text-emerald-700 font-black' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Hotel B (EUR €)
-              </button>
+            {/* Isolated Tenant Identity */}
+            <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 self-start lg:self-auto">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>{dashboardData?.hotel?.name || authHotelName || 'Hotel Property'}</span>
+              <span className="text-[10px] text-slate-400 font-mono">({currencySymbol})</span>
             </div>
           </div>
 
@@ -811,10 +956,10 @@ export default function HotelOwnerDashboard() {
             <h3 className="text-lg font-black mb-2">Tenant Access Error</h3>
             <p className="text-xs leading-relaxed mb-6">{error}</p>
             <button
-              onClick={() => handleQuickDemoSwitch('owner_hotela', 'password123')}
+              onClick={() => { logout(); navigate('/login'); }}
               className="px-4 py-2.5 rounded-xl bg-rose-700 text-white text-xs font-bold hover:bg-rose-800 cursor-pointer"
             >
-              Switch to Valid Hotel A Account
+              Back to Login
             </button>
           </div>
         )}
@@ -1458,6 +1603,13 @@ export default function HotelOwnerDashboard() {
               </div>
               <div className="flex items-center gap-3">
                 <button
+                  onClick={() => handleOpenNewOrder()}
+                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Create Table Order</span>
+                </button>
+                <button
                   onClick={() => setShowAddTableModal(true)}
                   className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
                 >
@@ -1540,14 +1692,22 @@ export default function HotelOwnerDashboard() {
                               <span className="text-[11px] font-black uppercase tracking-wider text-amber-900">
                                 Order #{currentOrder.id.length > 8 ? currentOrder.id.slice(-6).toUpperCase() : currentOrder.id}
                               </span>
-                              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                                currentOrder.status === 'PLACED' ? 'bg-blue-100 text-blue-800 border border-blue-200' :
-                                currentOrder.status === 'PREPARING' ? 'bg-amber-200 text-amber-900 border border-amber-300' :
-                                currentOrder.status === 'READY' || currentOrder.status === 'SERVED' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
-                                'bg-slate-200 text-slate-800'
-                              }`}>
-                                {currentOrder.status}
-                              </span>
+                              <select
+                                value={currentOrder.status}
+                                onChange={(e) => handleUpdateOrderStatusAction(currentOrder.id, e.target.value)}
+                                className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider border cursor-pointer focus:outline-none ${
+                                  currentOrder.status === 'PLACED' ? 'bg-blue-100 text-blue-900 border-blue-300' :
+                                  currentOrder.status === 'PREPARING' ? 'bg-amber-100 text-amber-900 border-amber-300' :
+                                  currentOrder.status === 'SERVED' ? 'bg-emerald-100 text-emerald-900 border-emerald-300' :
+                                  currentOrder.status === 'COMPLETED' ? 'bg-purple-100 text-purple-900 border-purple-300' :
+                                  'bg-slate-200 text-slate-800 border-slate-300'
+                                }`}
+                              >
+                                <option value="PLACED">Pending</option>
+                                <option value="PREPARING">Preparing</option>
+                                <option value="SERVED">Served</option>
+                                <option value="COMPLETED">Completed</option>
+                              </select>
                             </div>
 
                             {/* Ordered Items List */}
@@ -1592,37 +1752,57 @@ export default function HotelOwnerDashboard() {
                       )}
                     </div>
 
-                    {/* Action Buttons (QR Removed) */}
-                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                    {/* Action Buttons */}
+                    <div className="pt-3 border-t border-slate-100 flex flex-col gap-2">
                       {isOccupied ? (
-                        <>
+                        <div className="flex items-center gap-1.5">
                           {currentOrder ? (
                             <button
-                              onClick={() => handleSettleOrder(currentOrder, table.number)}
-                              className="flex-1 py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                              onClick={() => handleOpenAddItems(currentOrder, table.number)}
+                              className="flex-1 py-2 px-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-black flex items-center justify-center gap-1 transition-colors cursor-pointer border border-amber-300 shadow-xs"
+                              title="Add more items to this order"
                             >
-                              <Receipt className="w-3.5 h-3.5" />
-                              <span>Settle Bill ({currencySymbol}{orderTotal.toFixed(2)})</span>
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Add Items</span>
                             </button>
                           ) : (
-                            <div className="text-[11px] text-slate-400 font-medium">Session Active</div>
+                            <button
+                              onClick={() => handleOpenNewOrder(table.number)}
+                              className="flex-1 py-2 px-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-xs"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Take Order</span>
+                            </button>
+                          )}
+                          {currentOrder && (
+                            <button
+                              onClick={() => handleSettleOrder(currentOrder, table.number)}
+                              className="flex-1 py-2 px-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-xs"
+                            >
+                              <Receipt className="w-3.5 h-3.5" />
+                              <span>Settle</span>
+                            </button>
                           )}
                           <button
                             onClick={() => handleFreeTableAction(table.number)}
-                            className="py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-bold transition-colors cursor-pointer"
+                            className="py-2 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-bold transition-colors cursor-pointer"
+                            title="Free Table"
                           >
-                            Free Table
+                            Free
                           </button>
-                        </>
+                        </div>
                       ) : (
-                        <div className="flex items-center justify-between w-full">
-                          <span className="text-[11px] text-emerald-600 font-bold flex items-center gap-1">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                            Ready to Seat
-                          </span>
+                        <div className="flex items-center justify-between w-full gap-2">
+                          <button
+                            onClick={() => handleOpenNewOrder(table.number)}
+                            className="flex-1 py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Take Order</span>
+                          </button>
                           <button
                             onClick={() => handleDeleteTableAction(table.number)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                            className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition-colors cursor-pointer"
                             title="Delete Table"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -2403,11 +2583,312 @@ export default function HotelOwnerDashboard() {
         </div>
       )}
 
+      {/* ── CREATE / ADD ITEMS TO TABLE ORDER MODAL ── */}
+      {showTableOrderModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex justify-center items-center p-4 overflow-y-auto" onClick={() => setShowTableOrderModal(false)}>
+          <div className="bg-white rounded-3xl border border-slate-200 max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-scale-up" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/80">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center font-black text-sm">
+                  T{orderingTableNumber || '?'}
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900">
+                    {activeExistingOrderId 
+                      ? `Add Items to Table ${orderingTableNumber}` 
+                      : `Create Order for Table ${orderingTableNumber}`}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    {activeExistingOrderId 
+                      ? `Appending dishes to existing Order #${activeExistingOrderId.slice(-6).toUpperCase()}` 
+                      : `Select food items, adjust quantities, and send order directly to kitchen`}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowTableOrderModal(false);
+                  setOrderCart([]);
+                }}
+                className="w-9 h-9 rounded-xl bg-slate-200 hover:bg-slate-300 flex items-center justify-center text-slate-600 text-sm font-black transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body: Two-Pane Split Layout */}
+            <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-12">
+              {/* Left Column: Menu Item Selector (7 cols) */}
+              <div className="lg:col-span-7 p-6 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-y-auto flex flex-col max-h-[55vh] lg:max-h-[68vh]">
+                {/* Table Number Selector (Only when creating new order) */}
+                {!activeExistingOrderId && (
+                  <div className="mb-4 flex items-center gap-3">
+                    <label className="text-xs font-black text-slate-700 uppercase tracking-wider shrink-0">
+                      Target Table:
+                    </label>
+                    <select
+                      value={orderingTableNumber || ''}
+                      onChange={e => setOrderingTableNumber(Number(e.target.value))}
+                      className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500 cursor-pointer"
+                    >
+                      {displayedTables.map(t => (
+                        <option key={t.id || t.number} value={t.number}>
+                          Table {t.number} ({t.status === 'OCCUPIED' ? 'Occupied' : 'Available'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Search Bar */}
+                <div className="relative mb-3">
+                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={orderItemSearch}
+                    onChange={e => setOrderItemSearch(e.target.value)}
+                    placeholder="Search dishes by name or category..."
+                    className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-100 border border-slate-200 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white transition-all"
+                  />
+                  {orderItemSearch && (
+                    <button
+                      onClick={() => setOrderItemSearch('')}
+                      className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-slate-700 cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Category Pills */}
+                <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-2 mb-3">
+                  {orderModalCategories.map(cat => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setOrderItemCategory(cat)}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-colors cursor-pointer border ${
+                        orderItemCategory === cat
+                          ? 'bg-amber-600 border-amber-600 text-white'
+                          : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Dishes Grid */}
+                <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                  {filteredOrderDishes.length === 0 ? (
+                    <div className="text-center py-12 text-slate-400 text-xs">
+                      No menu items match your search.
+                    </div>
+                  ) : (
+                    filteredOrderDishes.map(dish => {
+                      const inCart = orderCart.find(i => (i.menuItemId || i.id) === dish.id);
+                      const qty = inCart ? inCart.quantity : 0;
+                      const isNonVeg = ((dish.category || '') + (dish.name || '')).toLowerCase().includes('chicken') ||
+                                       ((dish.category || '') + (dish.name || '')).toLowerCase().includes('mutton') ||
+                                       ((dish.category || '') + (dish.name || '')).toLowerCase().includes('fish') ||
+                                       ((dish.category || '') + (dish.name || '')).toLowerCase().includes('egg') ||
+                                       ((dish.category || '') + (dish.name || '')).toLowerCase().includes('non-veg');
+
+                      return (
+                        <div
+                          key={dish.id}
+                          className="flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50/60 transition-all"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0 pr-3">
+                            <span className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0 ${
+                              isNonVeg ? 'border-rose-500' : 'border-emerald-600'
+                            }`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${isNonVeg ? 'bg-rose-500' : 'bg-emerald-600'}`} />
+                            </span>
+                            <div className="truncate">
+                              <h5 className="text-xs font-bold text-slate-900 truncate">{dish.name}</h5>
+                              <span className="text-[10px] text-slate-400 uppercase font-semibold block">
+                                {dish.category} · {currencySymbol}{parseFloat(dish.price).toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="shrink-0">
+                            {qty > 0 ? (
+                              <div className="flex items-center gap-1.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOrderCartRemove(dish.id)}
+                                  className="w-6 h-6 rounded bg-white hover:bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-800 cursor-pointer shadow-xs"
+                                >
+                                  −
+                                </button>
+                                <span className="text-xs font-black px-1.5 text-slate-900">{qty}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOrderCartAdd(dish)}
+                                  className="w-6 h-6 rounded bg-white hover:bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-800 cursor-pointer shadow-xs"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleOrderCartAdd(dish)}
+                                className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>Add</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Right Column: Order Summary & Auto Calculation (5 cols) */}
+              <div className="lg:col-span-5 p-6 bg-slate-50/70 flex flex-col justify-between max-h-[55vh] lg:max-h-[68vh] overflow-y-auto">
+                <div>
+                  <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200">
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-700">
+                      Order Items ({orderCart.reduce((s, i) => s + i.quantity, 0)})
+                    </span>
+                    {orderCart.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setOrderCart([])}
+                        className="text-[11px] text-rose-600 font-bold hover:underline cursor-pointer"
+                      >
+                        Clear All
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Selected Cart Items */}
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    {orderCart.length === 0 ? (
+                      <div className="text-center py-12 text-slate-400 text-xs">
+                        <UtensilsCrossed className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                        No dishes selected yet.<br/>Click "+ Add" on items to build the order.
+                      </div>
+                    ) : (
+                      orderCart.map(item => (
+                        <div
+                          key={item.menuItemId || item.id}
+                          className="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200 shadow-xs"
+                        >
+                          <div className="min-w-0 pr-2">
+                            <h6 className="text-xs font-bold text-slate-900 truncate">{item.name}</h6>
+                            <span className="text-[10px] text-slate-500 font-medium">
+                              {currencySymbol}{item.price.toFixed(2)} each
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+                              <button
+                                type="button"
+                                onClick={() => handleOrderCartRemove(item.menuItemId || item.id)}
+                                className="w-5 h-5 rounded bg-white hover:bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-700 cursor-pointer"
+                              >
+                                −
+                              </button>
+                              <span className="text-xs font-black px-1 text-slate-900">{item.quantity}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleOrderCartAdd(item)}
+                                className="w-5 h-5 rounded bg-white hover:bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-700 cursor-pointer"
+                              >
+                                +
+                              </button>
+                            </div>
+                            <span className="text-xs font-black text-slate-900 w-16 text-right">
+                              {currencySymbol}{(item.price * item.quantity).toFixed(2)}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleOrderCartDelete(item.menuItemId || item.id)}
+                              className="text-slate-400 hover:text-rose-600 text-xs p-1 cursor-pointer"
+                              title="Remove item"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Bill Breakdown & Submit Actions */}
+                <div className="pt-4 border-t border-slate-200 mt-4 space-y-2">
+                  <div className="flex justify-between text-xs text-slate-600 font-medium">
+                    <span>Subtotal:</span>
+                    <span className="font-bold text-slate-900">{currencySymbol}{orderCartSubtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-slate-600 font-medium">
+                    <span>Tax / GST ({orderTaxRate}%):</span>
+                    <span className="font-bold text-slate-900">{currencySymbol}{orderCartTax.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-slate-900 font-black pt-1.5 border-t border-slate-200">
+                    <span className="uppercase tracking-wider">Total Bill Amount:</span>
+                    <span className="text-base text-amber-700">{currencySymbol}{orderCartTotal.toFixed(2)}</span>
+                  </div>
+
+                  <div className="pt-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowTableOrderModal(false);
+                        setOrderCart([]);
+                      }}
+                      className="flex-1 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={orderCart.length === 0 || orderSubmitting}
+                      onClick={handleSubmitTableOrder}
+                      className="flex-2 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white text-xs font-black uppercase tracking-wider shadow-md shadow-amber-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      {orderSubmitting ? (
+                        <span>Saving...</span>
+                      ) : activeExistingOrderId ? (
+                        <>
+                          <Plus className="w-4 h-4" />
+                          <span>Add to Order</span>
+                        </>
+                      ) : (
+                        <>
+                          <UtensilsCrossed className="w-4 h-4" />
+                          <span>Send to Kitchen</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── BILLING & SETTLEMENT MODAL ── */}
       {billingOrder && (
         <BillModal
           order={billingOrder}
           tableNumber={billingTableNumber}
+          hotelName={dashboardData?.hotel?.name || authHotelName || 'Hotel Lay Bhari'}
+          currencySymbol={currencySymbol}
+          taxPercentage={dashboardData?.hotel?.taxPercentage || 10}
+          contactPhone={dashboardData?.hotel?.contactPhone || ''}
+          contactEmail={dashboardData?.hotel?.contactEmail || ''}
           onClose={() => {
             setBillingOrder(null);
             setBillingTableNumber(null);
@@ -2418,8 +2899,9 @@ export default function HotelOwnerDashboard() {
               await handleFreeTableAction(billingTableNumber);
               setBillingOrder(null);
               setBillingTableNumber(null);
-              showToast(`Table ${billingTableNumber} bill settled and freed!`);
+              showToast(`Table ${billingTableNumber} bill settled and table is now free!`);
               fetchHotelTables();
+              fetchHotelOrders();
             }
           }}
         />

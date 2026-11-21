@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSocket } from '../SocketContext';
 import NavBar from '../components/NavBar';
@@ -83,19 +83,37 @@ export default function CustomerMenu() {
   const customRadius = hotel?.theme?.borderRadius || '16px';
 
   // Active items source: if hotelSlug is provided, use hotelItems; otherwise defaultMenuItems
-  const activeItems = hotelSlug ? hotelItems : defaultMenuItems;
+  const activeItems = useMemo(() => {
+    return hotelSlug ? hotelItems : defaultMenuItems;
+  }, [hotelSlug, hotelItems, defaultMenuItems]);
 
   // Pinned Quick-Add / Bestseller items
-  const bestsellerItems = activeItems.filter(item => item.isBestseller === true);
+  const bestsellerItems = useMemo(() => {
+    return activeItems.filter(item => item.isBestseller === true);
+  }, [activeItems]);
 
-  const categories = ['All', ...new Set(activeItems.map(item => item.category).filter(Boolean))];
-  const filteredItems = activeItems.filter(item => {
-    const matchesCategory = activeCategory === 'All' || item.category === activeCategory;
-    const matchesSearch = !searchQuery || 
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      (item.description || '').toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
+  const categories = useMemo(() => {
+    return ['All', ...new Set(activeItems.map(item => item.category).filter(Boolean))];
+  }, [activeItems]);
+
+  const filteredItems = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    return activeItems.filter(item => {
+      const matchesCategory = activeCategory === 'All' || item.category === activeCategory;
+      const matchesSearch = !q || 
+        item.name.toLowerCase().includes(q) || 
+        (item.description || '').toLowerCase().includes(q);
+      return matchesCategory && matchesSearch;
+    });
+  }, [activeItems, activeCategory, searchQuery]);
+
+  const cartQtyMap = useMemo(() => {
+    const map = {};
+    for (const item of cart) {
+      map[item.id] = item.quantity;
+    }
+    return map;
+  }, [cart]);
 
   const addToCart = (item) => {
     setCart(prev => {
@@ -118,10 +136,7 @@ export default function CustomerMenu() {
     }, []));
   };
 
-  const getItemQuantity = (itemId) => {
-    const found = cart.find(i => i.id === itemId);
-    return found ? found.quantity : 0;
-  };
+  const getItemQuantity = (itemId) => cartQtyMap[itemId] || 0;
 
   const subtotal = cart.reduce((sum, i) => sum + (parseFloat(i.price) || 0) * i.quantity, 0);
   const taxRate = parseFloat(hotel?.taxPercentage ?? 10);
@@ -137,7 +152,7 @@ export default function CustomerMenu() {
       quantity: item.quantity
     }));
     const fakeOrder = { items: orderItems, timestamp: new Date().toISOString() };
-    placeOrder(tableId, orderItems);
+    placeOrder(tableId, orderItems, hotel?.id || null);
     setCart([]);
     setShowOrderSummary(false);
     setOrderPlaced(true);

@@ -538,6 +538,47 @@ export const multiTenantDb = {
     return res.rows[0] || null;
   },
 
+  async updateHotel(hotelId, { name, currency, taxPercentage, contactEmail, contactPhone, status, totalRooms }) {
+    const fields = [];
+    const params = [hotelId];
+    let idx = 2;
+
+    if (name !== undefined) {
+      fields.push(`name = $${idx++}`);
+      params.push(name.trim());
+    }
+    if (currency !== undefined) {
+      fields.push(`currency = $${idx++}`);
+      params.push(currency.toUpperCase());
+    }
+    if (taxPercentage !== undefined) {
+      fields.push(`tax_percentage = $${idx++}`);
+      params.push(parseFloat(taxPercentage) || 0);
+    }
+    if (contactEmail !== undefined) {
+      fields.push(`contact_email = $${idx++}`);
+      params.push(contactEmail.trim());
+    }
+    if (contactPhone !== undefined) {
+      fields.push(`contact_phone = $${idx++}`);
+      params.push(contactPhone.trim());
+    }
+    if (status !== undefined) {
+      fields.push(`status = $${idx++}`);
+      params.push(status.toUpperCase());
+    }
+    if (totalRooms !== undefined) {
+      fields.push(`total_rooms = $${idx++}`);
+      params.push(parseInt(totalRooms, 10) || 0);
+    }
+
+    if (fields.length === 0) return null;
+
+    const sql = `UPDATE hotels SET ${fields.join(', ')} WHERE id = $1 RETURNING *;`;
+    const res = await pool.query(sql, params);
+    return res.rows[0] || null;
+  },
+
   async getAllUsers() {
     const res = await pool.query(`
       SELECT u.id, u.username, u.role, u.full_name, u.email, u.status, u.hotel_id,

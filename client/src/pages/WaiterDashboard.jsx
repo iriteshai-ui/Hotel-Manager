@@ -12,16 +12,17 @@ export default function WaiterDashboard() {
   const readyOrders = orders.filter(o => o.status === 'READY');
   const servedOrders = orders.filter(o => o.status === 'SERVED').slice(-6).reverse();
 
+  const hasActivelyServedRef = React.useRef(false);
+
+  const handleDeliver = (orderId) => {
+    hasActivelyServedRef.current = true;
+    updateOrderStatus(orderId, 'SERVED');
+  };
+
   // Redirect if all orders are served (user request)
   React.useEffect(() => {
-    // Only redirect if there were orders and now there are none
-    // or if the user explicitly wants to go home when the list is empty.
-    // The user said: "after serving all oders come to home page"
-    if (readyOrders.length === 0 && orders.some(o => o.status === 'SERVED')) {
+    if (hasActivelyServedRef.current && readyOrders.length === 0) {
         const timer = setTimeout(() => {
-            // Optional: only redirect if they actually served something recently
-            // but the request is simple: "after serving all oders come to home page"
-            // We'll give it a small delay so they see the last one vanish
             navigate('/');
         }, 3000);
         return () => clearTimeout(timer);
@@ -88,7 +89,7 @@ export default function WaiterDashboard() {
                 <div className="flex gap-2">
                   <button 
                     className="flex-1 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] text-white bg-gradient-to-r from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-500/20 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] cursor-pointer" 
-                    onClick={() => updateOrderStatus(order.id, 'SERVED')}
+                    onClick={() => handleDeliver(order.id)}
                   >
                     Deliver
                   </button>

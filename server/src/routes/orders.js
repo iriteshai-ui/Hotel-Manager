@@ -4,10 +4,17 @@ import { stompBroker } from '../stomp.js';
 
 const router = Router();
 
+function resolveHotelId(req) {
+  if (req.user && req.user.role !== 'SUPER_ADMIN' && req.user.hotel_id) {
+    return req.user.hotel_id;
+  }
+  return req.headers['x-hotel-id'] || req.query.hotelId || req.body?.hotelId || req.user?.hotel_id || null;
+}
+
 router.post('/', async (req, res) => {
   try {
-    const { tableNumber, items, hotelId: bodyHotelId } = req.body || {};
-    const hotelId = bodyHotelId || req.headers['x-hotel-id'] || req.user?.hotel_id || null;
+    const { tableNumber, items } = req.body || {};
+    const hotelId = resolveHotelId(req);
     const num = parseInt(tableNumber, 10);
     if (!num) {
       return res.status(400).json({ error: 'Valid table number is required' });
@@ -36,7 +43,7 @@ router.post('/', async (req, res) => {
 
 router.get('/', async (req, res) => {
   try {
-    const hotelId = req.headers['x-hotel-id'] || req.user?.hotel_id || req.query.hotelId || null;
+    const hotelId = resolveHotelId(req);
     const orders = await db.getAllOrders(hotelId);
     res.json(orders);
   } catch (err) {
@@ -47,7 +54,7 @@ router.get('/', async (req, res) => {
 
 router.get('/active', async (req, res) => {
   try {
-    const hotelId = req.headers['x-hotel-id'] || req.user?.hotel_id || req.query.hotelId || null;
+    const hotelId = resolveHotelId(req);
     const orders = await db.getActiveOrders(hotelId);
     res.json(orders);
   } catch (err) {
@@ -69,6 +76,25 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+router.post('/:id/items', async (req, res) => {
+  try {
+    const { items } = req.body || {};
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Valid items array is required' });
+    }
+    const updatedOrder = await db.addItemsToOrder(req.params.id, items);
+    if (!updatedOrder) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    stompBroker.broadcast('/topic/order_updated', updatedOrder);
+    res.json(updatedOrder);
+  } catch (err) {
+    console.error('Error adding items to order:', err.message);
+    res.status(500).json({ error: 'Failed to add items to order' });
+  }
+});
+
 router.put('/:id/status', async (req, res) => {
   try {
     const { status } = req.body || {};
@@ -86,7 +112,8 @@ router.put('/:id/status', async (req, res) => {
         name: `Table ${updatedOrder.tableNumber}`,
         status: 'AVAILABLE',
         currentOrderId: null,
-        capacity: 4
+        capacity: 4,
+        hotelId: updatedOrder.hotelId
       };
       stompBroker.broadcast('/topic/table_updated', tableUpdate);
     }

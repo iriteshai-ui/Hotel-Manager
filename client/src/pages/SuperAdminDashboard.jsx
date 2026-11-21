@@ -32,6 +32,17 @@ export default function SuperAdminDashboard() {
 
   // Modals
   const [showAddHotelModal, setShowAddHotelModal] = useState(false);
+  const [showEditHotelModal, setShowEditHotelModal] = useState(false);
+  const [editingHotel, setEditingHotel] = useState(null);
+  const [editHotelForm, setEditHotelForm] = useState({
+    name: '',
+    currency: 'USD',
+    taxPercentage: 10,
+    contactEmail: '',
+    contactPhone: '',
+    status: 'ACTIVE',
+    totalRooms: 10
+  });
   const [newHotelForm, setNewHotelForm] = useState({
     name: '',
     slug: '',
@@ -195,6 +206,46 @@ export default function SuperAdminDashboard() {
       }
     } catch {
       setStatusMsg({ type: 'error', text: 'Failed to update hotel status' });
+    }
+    setTimeout(() => setStatusMsg(null), 3000);
+  };
+
+  const handleOpenEditHotelModal = (h) => {
+    setEditingHotel(h);
+    setEditHotelForm({
+      name: h.name || '',
+      currency: h.currency || 'USD',
+      taxPercentage: h.tax_percentage || 10,
+      contactEmail: h.contact_email || '',
+      contactPhone: h.contact_phone || '',
+      status: h.status || 'ACTIVE',
+      totalRooms: h.total_rooms || h.roomsCount || 0
+    });
+    setShowEditHotelModal(true);
+  };
+
+  const handleUpdateHotelSubmit = async (e) => {
+    e.preventDefault();
+    if (!editingHotel) return;
+    try {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`/api/superadmin/hotels/${editingHotel.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token },
+        body: JSON.stringify(editHotelForm)
+      });
+      if (res.ok) {
+        setStatusMsg({ type: 'success', text: `Hotel "${editHotelForm.name}" updated successfully!` });
+        setShowEditHotelModal(false);
+        setEditingHotel(null);
+        fetchHotels();
+        fetchOverview();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setStatusMsg({ type: 'error', text: err.error || 'Failed to update hotel' });
+      }
+    } catch {
+      setStatusMsg({ type: 'error', text: 'Network error updating hotel' });
     }
     setTimeout(() => setStatusMsg(null), 3000);
   };
@@ -797,26 +848,47 @@ export default function SuperAdminDashboard() {
                         {h.roomsCount || 0} rooms
                       </td>
                       <td className="py-4 px-6">
-                        <button
-                          onClick={() => handleToggleHotelStatus(h.id, h.status)}
-                          className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border cursor-pointer transition-all ${
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
                             h.status === 'ACTIVE'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                              : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
                           }`}
                         >
-                          {h.status}
-                        </button>
+                          <span className={`w-1.5 h-1.5 rounded-full ${h.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
+                          {h.status === 'ACTIVE' ? 'Active' : 'Inactive'}
+                        </span>
                       </td>
                       <td className="py-4 px-6 text-right">
-                        <a
-                          href={`/menu?hotel=${h.slug}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors inline-flex items-center gap-1 no-underline"
-                        >
-                          Menu <ExternalLink className="w-3 h-3" />
-                        </a>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleToggleHotelStatus(h.id, h.status)}
+                            className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-bold transition-all cursor-pointer ${
+                              h.status === 'ACTIVE'
+                                ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                            }`}
+                            title={h.status === 'ACTIVE' ? 'Deactivate Hotel' : 'Activate Hotel'}
+                          >
+                            {h.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+                          </button>
+                          <button
+                            onClick={() => handleOpenEditHotelModal(h)}
+                            className="px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-[11px] transition-colors inline-flex items-center gap-1 cursor-pointer"
+                            title="Edit Hotel Details"
+                          >
+                            <Edit3 className="w-3 h-3" />
+                            <span>Edit</span>
+                          </button>
+                          <a
+                            href={`/menu?hotel=${h.slug}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] transition-colors inline-flex items-center gap-1 no-underline"
+                          >
+                            Menu <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1672,6 +1744,127 @@ export default function SuperAdminDashboard() {
               >
                 Provision Property & Account
               </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── EDIT HOTEL MODAL ── */}
+      {showEditHotelModal && editingHotel && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowEditHotelModal(false)}>
+          <div className="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Edit Hotel Property</h3>
+                <p className="text-xs text-slate-500">Update configuration for {editingHotel.name}</p>
+              </div>
+              <button onClick={() => setShowEditHotelModal(false)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 cursor-pointer">✕</button>
+            </div>
+
+            <form onSubmit={handleUpdateHotelSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Hotel Property Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editHotelForm.name}
+                  onChange={e => setEditHotelForm(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-indigo-600 font-bold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Currency *</label>
+                  <select
+                    value={editHotelForm.currency}
+                    onChange={e => setEditHotelForm(prev => ({ ...prev, currency: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold focus:outline-none focus:border-indigo-600 bg-white"
+                  >
+                    <option value="INR">INR (₹) - Indian Rupee</option>
+                    <option value="USD">USD ($) - US Dollar</option>
+                    <option value="EUR">EUR (€) - Euro</option>
+                    <option value="GBP">GBP (£) - British Pound</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Tax Rate (%) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    required
+                    value={editHotelForm.taxPercentage}
+                    onChange={e => setEditHotelForm(prev => ({ ...prev, taxPercentage: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-indigo-600 font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Tenant Status *</label>
+                  <select
+                    value={editHotelForm.status}
+                    onChange={e => setEditHotelForm(prev => ({ ...prev, status: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold focus:outline-none focus:border-indigo-600 bg-white"
+                  >
+                    <option value="ACTIVE">ACTIVE (Operational)</option>
+                    <option value="INACTIVE">INACTIVE (Deactivated)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Total Rooms</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editHotelForm.totalRooms}
+                    onChange={e => setEditHotelForm(prev => ({ ...prev, totalRooms: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-indigo-600 font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Contact Email</label>
+                  <input
+                    type="email"
+                    value={editHotelForm.contactEmail}
+                    onChange={e => setEditHotelForm(prev => ({ ...prev, contactEmail: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-indigo-600"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Contact Phone</label>
+                  <input
+                    type="tel"
+                    value={editHotelForm.contactPhone}
+                    onChange={e => setEditHotelForm(prev => ({ ...prev, contactPhone: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-indigo-600"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowEditHotelModal(false)}
+                  className="flex-1 py-3 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-indigo-600/20 transition-all cursor-pointer"
+                >
+                  Save Changes
+                </button>
+              </div>
             </form>
           </div>
         </div>

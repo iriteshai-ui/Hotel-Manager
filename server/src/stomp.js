@@ -158,8 +158,8 @@ class StompBroker {
         }
 
         if (dest === '/app/place_order') {
-          const { tableNumber, items } = payload;
-          const newOrder = await db.placeOrder(tableNumber, items);
+          const { tableNumber, items, hotelId } = payload;
+          const newOrder = await db.placeOrder(tableNumber, items, hotelId || null);
 
           // Broadcast order_added
           this.broadcast('/topic/order_added', newOrder);
@@ -171,7 +171,8 @@ class StompBroker {
             name: `Table ${tableNumber}`,
             status: 'OCCUPIED',
             currentOrderId: newOrder.id,
-            capacity: 4
+            capacity: 4,
+            hotelId: hotelId || null
           };
           this.broadcast('/topic/table_updated', tableUpdate);
         } else if (dest === '/app/update_order_status') {

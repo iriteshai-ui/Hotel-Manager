@@ -18,11 +18,20 @@ export const SocketProvider = ({ children }) => {
 
     const getToken = () => localStorage.getItem('auth_token');
 
+    const getHotelId = () => localStorage.getItem('auth_hotel_id');
+
+    const matchesCurrentTenant = (entity) => {
+        const curHotel = getHotelId();
+        if (!curHotel) return true; // not restricted to a specific hotel
+        if (!entity || !entity.hotelId) return true; // general entity
+        return entity.hotelId === curHotel;
+    };
+
     const fetchInitialData = async () => {
         try {
             const headers = { 'Content-Type': 'application/json' };
             const token = getToken();
-            const hotelId = localStorage.getItem('auth_hotel_id');
+            const hotelId = getHotelId();
             if (token) headers['X-Auth-Token'] = token;
             if (hotelId) headers['x-hotel-id'] = hotelId;
             const response = await fetch(`/api/initial_data`, { headers });
@@ -38,19 +47,27 @@ export const SocketProvider = ({ children }) => {
     useEffect(() => {
         fetchInitialData();
 
+        const handleAuthChange = () => fetchInitialData();
+        window.addEventListener('storage', handleAuthChange);
+        window.addEventListener('auth_state_changed', handleAuthChange);
+
         const client = new Client({
             webSocketFactory: () => new SockJS(`${window.location.protocol}//${window.location.host}/ws`),
+            reconnectDelay: 5000,
+            heartbeatIncoming: 10000,
+            heartbeatOutgoing: 10000,
             onConnect: () => {
                 setIsConnected(true);
-                console.log("Connected to STOMP server");
 
                 client.subscribe('/topic/table_updated', (message) => {
                     const updatedTable = JSON.parse(message.body);
+                    if (!matchesCurrentTenant(updatedTable)) return;
                     setTables((prev) => prev.map(t => t.id === updatedTable.id ? updatedTable : t));
                 });
 
                 client.subscribe('/topic/table_added', (message) => {
                     const newTable = JSON.parse(message.body);
+                    if (!matchesCurrentTenant(newTable)) return;
                     setTables((prev) => {
                         if (prev.find(t => t.id === newTable.id)) return prev;
                         return [...prev, newTable].sort((a, b) => a.number - b.number);
@@ -59,16 +76,19 @@ export const SocketProvider = ({ children }) => {
 
                 client.subscribe('/topic/table_deleted', (message) => {
                     const deleted = JSON.parse(message.body);
+                    if (!matchesCurrentTenant(deleted)) return;
                     setTables((prev) => prev.filter(t => t.id !== deleted.id));
                 });
 
                 client.subscribe('/topic/order_added', (message) => {
                     const newOrder = JSON.parse(message.body);
+                    if (!matchesCurrentTenant(newOrder)) return;
                     setOrders((prev) => [...prev, newOrder]);
                 });
 
                 client.subscribe('/topic/order_updated', (message) => {
                     const updatedOrder = JSON.parse(message.body);
+                    if (!matchesCurrentTenant(updatedOrder)) return;
                     setOrders((prev) => {
                         if (updatedOrder.status === 'PAID') {
                             return prev.filter(o => o.id !== updatedOrder.id);
@@ -79,7 +99,6 @@ export const SocketProvider = ({ children }) => {
             },
             onDisconnect: () => {
                 setIsConnected(false);
-                console.log("Disconnected from STOMP server");
             },
             onStompError: (frame) => {
                 console.error('Broker reported error: ' + frame.headers['message']);
@@ -90,25 +109,33 @@ export const SocketProvider = ({ children }) => {
         clientRef.current = client;
 
         return () => {
+            window.removeEventListener('storage', handleAuthChange);
+            window.removeEventListener('auth_state_changed', handleAuthChange);
             if (clientRef.current) {
                 clientRef.current.deactivate();
             }
         };
     }, []);
 
-    const placeOrder = async (tableId, items) => {
+    const placeOrder = async (tableId, items, explicitHotelId = null) => {
         const tableNumber = parseInt(tableId.replace('t', ''), 10);
+        const hotelId = explicitHotelId || getHotelId();
         if (clientRef.current && clientRef.current.connected) {
             clientRef.current.publish({
                 destination: '/app/place_order',
-                body: JSON.stringify({ tableNumber, items })
+                body: JSON.stringify({ tableNumber, items, hotelId })
             });
         } else {
             try {
+                const headers = { 'Content-Type': 'application/json' };
+                const token = getToken();
+                if (token) headers['X-Auth-Token'] = token;
+                if (hotelId) headers['x-hotel-id'] = hotelId;
+
                 const res = await fetch('/api/orders', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ tableNumber, items })
+                    headers,
+                    body: JSON.stringify({ tableNumber, items, hotelId })
                 });
                 if (res.ok) {
                     const newOrder = await res.json();

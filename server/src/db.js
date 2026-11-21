@@ -564,19 +564,58 @@ export const db = {
   },
 
   async updateOrderStatus(orderId, status) {
+    const normalizedStatus = status === 'Pending' || status === 'PENDING' ? 'PLACED' :
+                             status === 'Preparing' ? 'PREPARING' :
+                             status === 'Served' ? 'SERVED' :
+                             status === 'Completed' ? 'COMPLETED' : status;
     const res = await pool.query(
       'UPDATE orders SET status = $1 WHERE id = $2 RETURNING *;',
-      [status, orderId]
+      [normalizedStatus, orderId]
     );
     if (!res.rows[0]) return null;
 
     const order = formatOrder(res.rows[0]);
 
-    if (status === 'PAID') {
+    if (normalizedStatus === 'PAID') {
       await this.freeTable(order.tableNumber, order.hotelId);
     }
 
     return order;
+  },
+
+  async addItemsToOrder(orderId, newItems = []) {
+    const order = await this.getOrderById(orderId);
+    if (!order) return null;
+
+    const existingItems = Array.isArray(order.items) ? [...order.items] : [];
+    for (const newItem of newItems) {
+      const idx = existingItems.findIndex(i => 
+        (i.menuItemId && newItem.menuItemId && i.menuItemId === newItem.menuItemId) || 
+        (i.name && newItem.name && i.name.toLowerCase() === newItem.name.toLowerCase())
+      );
+      const qty = parseInt(newItem.quantity, 10) || 1;
+      const price = parseFloat(newItem.price) || 0;
+      if (idx !== -1) {
+        existingItems[idx].quantity = (parseInt(existingItems[idx].quantity, 10) || 0) + qty;
+      } else {
+        existingItems.push({
+          menuItemId: newItem.menuItemId || newItem.id || crypto.randomUUID(),
+          name: newItem.name,
+          price,
+          quantity: qty
+        });
+      }
+    }
+
+    const totalPrice = existingItems.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 1)), 0);
+    const itemsJson = JSON.stringify(existingItems);
+
+    const res = await pool.query(
+      'UPDATE orders SET items_json = $1, total_price = $2 WHERE id = $3 RETURNING *;',
+      [itemsJson, totalPrice, orderId]
+    );
+
+    return formatOrder(res.rows[0]);
   },
 
   // Daily Insights

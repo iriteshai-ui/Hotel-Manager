@@ -3,6 +3,19 @@ import { db } from '../db.js';
 export async function authMiddleware(req, res, next) {
   const { path, method } = req;
 
+  // Extract user from token if provided so req.user is populated for tenant checks
+  const token = req.headers['x-auth-token'];
+  if (token) {
+    try {
+      const user = await db.getUserByToken(token);
+      if (user) {
+        req.user = user;
+      }
+    } catch (err) {
+      console.error('Auth token lookup error:', err.message);
+    }
+  }
+
   // Exact public matches
   if (path === '/api/initial_data') {
     return next();
@@ -33,20 +46,9 @@ export async function authMiddleware(req, res, next) {
     return next();
   }
 
-  const token = req.headers['x-auth-token'];
-  if (!token) {
+  if (!req.user) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  try {
-    const user = await db.getUserByToken(token);
-    if (!user) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-    req.user = user;
-    next();
-  } catch (err) {
-    console.error('Auth middleware error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  next();
 }

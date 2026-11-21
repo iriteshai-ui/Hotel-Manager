@@ -7,6 +7,10 @@ const router = Router();
 router.get('/', async (req, res) => {
   try {
     const hotels = await db.getHotels();
+    // Non-super-admin authenticated users can only view their own hotel
+    if (req.user && req.user.role !== 'SUPER_ADMIN' && req.user.hotel_id) {
+      return res.json(hotels.filter(h => h.id === req.user.hotel_id));
+    }
     res.json(hotels);
   } catch (err) {
     console.error('Error fetching hotels:', err.message);
@@ -42,6 +46,11 @@ router.get('/:slug/menu', async (req, res) => {
     const { slug } = req.params;
     const hotel = await db.getHotelBySlug(slug);
     if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
+
+    // Multi-tenant check: non-super-admin can only access own hotel
+    if (req.user && req.user.role !== 'SUPER_ADMIN' && req.user.hotel_id && req.user.hotel_id !== hotel.id) {
+      return res.status(403).json({ error: 'Forbidden: You can only access your own hotel menu' });
+    }
 
     const items = await db.getMenuItemsByHotel(hotel.id);
     res.json({ hotel, items });

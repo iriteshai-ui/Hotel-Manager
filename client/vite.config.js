@@ -21,6 +21,10 @@ export default defineConfig({
         target: 'http://localhost:8081',
         ws: true,
       },
+      '/stomp-ws': {
+        target: 'http://localhost:8081',
+        ws: true,
+      },
     },
   },
 })

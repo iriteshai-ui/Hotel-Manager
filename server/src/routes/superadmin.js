@@ -95,6 +95,29 @@ router.patch('/hotels/:id/status', async (req, res) => {
   }
 });
 
+// PUT /api/superadmin/hotels/:id - Update hotel details
+router.put('/hotels/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, currency, taxPercentage, contactEmail, contactPhone, status, totalRooms } = req.body || {};
+
+    const updated = await multiTenantDb.updateHotel(id, {
+      name, currency, taxPercentage, contactEmail, contactPhone, status, totalRooms
+    });
+    if (!updated) return res.status(404).json({ error: 'Hotel not found' });
+
+    await multiTenantDb.logAudit(id, req.user.user_id, req.user.username, 'UPDATE_HOTEL', 'HOTELS', {
+      hotelName: updated.name,
+      updatedFields: req.body
+    });
+
+    res.json({ success: true, hotel: updated });
+  } catch (err) {
+    console.error('Update hotel error:', err.message);
+    res.status(500).json({ error: 'Failed to update hotel details' });
+  }
+});
+
 // DELETE /api/superadmin/hotels/:id - Delete hotel
 router.delete('/hotels/:id', async (req, res) => {
   try {

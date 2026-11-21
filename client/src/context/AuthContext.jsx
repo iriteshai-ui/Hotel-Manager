@@ -108,6 +108,8 @@ export const AuthProvider = ({ children }) => {
       setFullName(data.fullName || data.username);
       setEmail(data.email || '');
 
+      window.dispatchEvent(new Event('auth_state_changed'));
+
       return { success: true, role: data.role, hotelSlug: data.hotelSlug };
     } catch (e) {
       return { success: false, error: e.message };
@@ -150,6 +152,8 @@ export const AuthProvider = ({ children }) => {
     setHotelCurrency('USD');
     setFullName(null);
     setEmail(null);
+
+    window.dispatchEvent(new Event('auth_state_changed'));
   };
 
   const isAuthenticated = !!token;
