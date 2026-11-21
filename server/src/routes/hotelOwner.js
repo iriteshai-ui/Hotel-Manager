@@ -209,6 +209,84 @@ router.post('/staff', async (req, res) => {
   }
 });
 
+// GET /api/hotel-owner/staff/attendance - Get daily staff attendance & summary for a date
+router.get('/staff/attendance', async (req, res) => {
+  try {
+    const { date } = req.query;
+    const data = await multiTenantDb.getStaffAttendanceByDate(req.targetHotelId, date);
+    res.json(data);
+  } catch (err) {
+    console.error('Fetch staff attendance error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch staff attendance' });
+  }
+});
+
+// POST /api/hotel-owner/staff/attendance - Mark or update attendance for a staff member
+router.post('/staff/attendance', async (req, res) => {
+  try {
+    const { staffId, date, status, notes } = req.body || {};
+    if (!staffId) return res.status(400).json({ error: 'Staff ID is required' });
+    if (!status) return res.status(400).json({ error: 'Attendance status is required (PRESENT, ABSENT, HALF_DAY, LEAVE)' });
+
+    const marked = await multiTenantDb.markStaffAttendance(req.targetHotelId, {
+      staffId,
+      date,
+      status,
+      notes: notes || '',
+      markedBy: req.user?.username || req.user?.name || 'Hotel Owner'
+    });
+
+    const refreshed = await multiTenantDb.getStaffAttendanceByDate(req.targetHotelId, date || marked.attendance_date);
+
+    res.json({
+      success: true,
+      record: marked,
+      summary: refreshed.summary
+    });
+  } catch (err) {
+    console.error('Mark staff attendance error:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to record attendance' });
+  }
+});
+
+// POST /api/hotel-owner/staff/attendance/batch - Batch mark all staff (e.g. Mark All Present)
+router.post('/staff/attendance/batch', async (req, res) => {
+  try {
+    const { date, status = 'PRESENT' } = req.body || {};
+    const result = await multiTenantDb.batchMarkStaffAttendance(req.targetHotelId, {
+      date,
+      status,
+      markedBy: req.user?.username || req.user?.name || 'Hotel Owner'
+    });
+
+    res.json({
+      success: true,
+      message: `All staff marked as ${status}`,
+      ...result
+    });
+  } catch (err) {
+    console.error('Batch attendance error:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to batch mark attendance' });
+  }
+});
+
+// GET /api/hotel-owner/staff/:id/attendance-history - Monthly attendance history for a staff member
+router.get('/staff/:id/attendance-history', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { month } = req.query; // YYYY-MM
+    const historyData = await multiTenantDb.getStaffMonthlyHistory(req.targetHotelId, id, month);
+    if (!historyData) {
+      return res.status(404).json({ error: 'Staff member not found or access denied' });
+    }
+
+    res.json(historyData);
+  } catch (err) {
+    console.error('Staff attendance history error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch staff attendance history' });
+  }
+});
+
 // PUT /api/hotel-owner/hotel - Hotel Owner: Update own hotel details
 router.put('/hotel', async (req, res) => {
   try {

@@ -8,7 +8,8 @@ import {
   Settings, FileText, CheckCircle2, XCircle, Search, Plus, ExternalLink, 
   RefreshCw, LogOut, ArrowUpRight, BarChart3, CreditCard, Shield, 
   Clock, Download, Filter, UserCheck, AlertCircle, Wrench, Sparkles, ChevronRight,
-  UtensilsCrossed, ChefHat, Receipt, Trash2, Printer, Check, Edit3
+  UtensilsCrossed, ChefHat, Receipt, Trash2, Printer, Check, Edit3,
+  Calendar, CalendarDays, ChevronLeft, UserX, X
 } from 'lucide-react';
 
 export default function HotelOwnerDashboard() {
@@ -76,6 +77,29 @@ export default function HotelOwnerDashboard() {
     status: 'ACTIVE'
   });
   const [savingHotel, setSavingHotel] = useState(false);
+
+  // Staff Attendance Management State
+  const [attendanceDate, setAttendanceDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [staffAttendance, setStaffAttendance] = useState([]);
+  const [attendanceSummary, setAttendanceSummary] = useState({
+    totalStaff: 0,
+    present: 0,
+    absent: 0,
+    halfDay: 0,
+    leave: 0,
+    unmarked: 0
+  });
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [staffSubTab, setStaffSubTab] = useState('attendance'); // 'attendance' or 'directory'
+  const [staffSearchQuery, setStaffSearchQuery] = useState('');
+  const [staffShiftFilter, setStaffShiftFilter] = useState('ALL');
+
+  // Monthly Attendance History Modal State
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyStaff, setHistoryStaff] = useState(null);
+  const [historyMonth, setHistoryMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [monthlyHistoryData, setMonthlyHistoryData] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   // Filters & Search State
   const [bookingStatusFilter, setBookingStatusFilter] = useState('ALL');
@@ -196,6 +220,28 @@ export default function HotelOwnerDashboard() {
     } catch (e) { console.error(e); }
   };
 
+  // 7b. Fetch Daily Staff Attendance
+  const fetchStaffAttendance = async (date) => {
+    const targetDate = date || attendanceDate;
+    setAttendanceLoading(true);
+    try {
+      const res = await fetch(getQueryUrl(`/api/hotel-owner/staff/attendance?date=${targetDate}`), {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStaffAttendance(data.records || []);
+        if (data.summary) {
+          setAttendanceSummary(data.summary);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching staff attendance:', err);
+    } finally {
+      setAttendanceLoading(false);
+    }
+  };
+
   // 8. Fetch Restaurant Menu for current hotel tenant
   const fetchHotelMenu = async (slug) => {
     if (!slug) return;
@@ -247,9 +293,17 @@ export default function HotelOwnerDashboard() {
     fetchCustomers();
     fetchFinancials();
     fetchStaff();
+    fetchStaffAttendance(attendanceDate);
     fetchHotelTables();
     fetchHotelOrders();
   }, [hotelIdQuery]);
+
+  useEffect(() => {
+    if (activeTab === 'staff') {
+      fetchStaffAttendance(attendanceDate);
+      fetchStaff();
+    }
+  }, [activeTab, attendanceDate]);
 
   useEffect(() => {
     if (dashboardData?.hotel?.slug) {
@@ -749,6 +803,193 @@ export default function HotelOwnerDashboard() {
       showToast('Network error updating status', 'error');
     }
   };
+
+  // ── DAILY STAFF ATTENDANCE ACTIONS ──
+  const handleMarkAttendance = async (staffMember, status, notes = '') => {
+    const staffId = staffMember.staff_id || staffMember.id;
+    // Optimistic UI update for instantaneous responsiveness
+    setStaffAttendance(prev => {
+      const updated = prev.map(item => {
+        if ((item.staff_id || item.id) === staffId) {
+          return {
+            ...item,
+            attendance_status: status,
+            notes: notes !== undefined ? notes : (item.notes || '')
+          };
+        }
+        return item;
+      });
+
+      setAttendanceSummary({
+        totalStaff: updated.length,
+        present: updated.filter(r => r.attendance_status === 'PRESENT').length,
+        absent: updated.filter(r => r.attendance_status === 'ABSENT').length,
+        halfDay: updated.filter(r => r.attendance_status === 'HALF_DAY').length,
+        leave: updated.filter(r => r.attendance_status === 'LEAVE').length,
+        unmarked: updated.filter(r => r.attendance_status === 'UNMARKED').length
+      });
+
+      return updated;
+    });
+
+    try {
+      const res = await fetch(getQueryUrl('/api/hotel-owner/staff/attendance'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          staffId,
+          date: attendanceDate,
+          status,
+          notes
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.summary) {
+          setAttendanceSummary(data.summary);
+        }
+        const label = status === 'PRESENT' ? 'Present' :
+                      status === 'ABSENT' ? 'Absent' :
+                      status === 'HALF_DAY' ? 'Half Day' : 'On Leave';
+        showToast(`Marked ${staffMember.name} as ${label}`);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || 'Failed to record attendance', 'error');
+        fetchStaffAttendance(attendanceDate);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Network error while marking attendance', 'error');
+      fetchStaffAttendance(attendanceDate);
+    }
+  };
+
+  const handleBatchMarkAllPresent = async () => {
+    try {
+      const res = await fetch(getQueryUrl('/api/hotel-owner/staff/attendance/batch'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          date: attendanceDate,
+          status: 'PRESENT'
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStaffAttendance(data.records || []);
+        if (data.summary) setAttendanceSummary(data.summary);
+        showToast(`All active staff marked Present for ${attendanceDate}!`);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || 'Failed to mark all present', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Network error on batch attendance', 'error');
+    }
+  };
+
+  const handleShiftAttendanceDay = (delta) => {
+    const cur = new Date(attendanceDate);
+    cur.setDate(cur.getDate() + delta);
+    setAttendanceDate(cur.toISOString().split('T')[0]);
+  };
+
+  const handleSetAttendanceToday = () => {
+    setAttendanceDate(new Date().toISOString().split('T')[0]);
+  };
+
+  const handleOpenMonthlyHistory = (staffMember) => {
+    const member = {
+      id: staffMember.staff_id || staffMember.id,
+      name: staffMember.name,
+      role: staffMember.role,
+      shift: staffMember.shift,
+      email: staffMember.email,
+      phone: staffMember.phone
+    };
+    setHistoryStaff(member);
+    const initialMonth = attendanceDate.slice(0, 7);
+    setHistoryMonth(initialMonth);
+    setShowHistoryModal(true);
+    fetchMonthlyHistory(member.id, initialMonth);
+  };
+
+  const fetchMonthlyHistory = async (staffId, month) => {
+    setHistoryLoading(true);
+    try {
+      const res = await fetch(getQueryUrl(`/api/hotel-owner/staff/${staffId}/attendance-history?month=${month}`), {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMonthlyHistoryData(data);
+      } else {
+        setMonthlyHistoryData(null);
+      }
+    } catch (err) {
+      console.error('Error fetching monthly history:', err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const handleShiftHistoryMonth = (deltaMonths) => {
+    const [y, m] = historyMonth.split('-').map(Number);
+    const d = new Date(y, m - 1 + deltaMonths, 1);
+    const nextMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    setHistoryMonth(nextMonth);
+    if (historyStaff?.id) {
+      fetchMonthlyHistory(historyStaff.id, nextMonth);
+    }
+  };
+
+  const handleUpdateHistoricalAttendance = async (date, status) => {
+    if (!historyStaff?.id) return;
+    try {
+      const res = await fetch(getQueryUrl('/api/hotel-owner/staff/attendance'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          staffId: historyStaff.id,
+          date,
+          status
+        })
+      });
+      if (res.ok) {
+        showToast(`Attendance updated for ${date}`);
+        fetchMonthlyHistory(historyStaff.id, historyMonth);
+        if (date === attendanceDate) {
+          fetchStaffAttendance(attendanceDate);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to update historical attendance', 'error');
+    }
+  };
+
+  const filteredStaffAttendance = useMemo(() => {
+    const q = (staffSearchQuery || '').toLowerCase().trim();
+    return staffAttendance.filter(item => {
+      const matchShift = staffShiftFilter === 'ALL' || (item.shift || '').toUpperCase() === staffShiftFilter;
+      const matchSearch = !q || 
+        (item.name || '').toLowerCase().includes(q) || 
+        (item.role || '').toLowerCase().includes(q) ||
+        (item.email || '').toLowerCase().includes(q) ||
+        (item.phone || '').toLowerCase().includes(q);
+      return matchShift && matchSearch;
+    });
+  }, [staffAttendance, staffShiftFilter, staffSearchQuery]);
 
   const currencySymbol = dashboardData?.hotel?.currency === 'EUR' ? '€' : 
                          dashboardData?.hotel?.currency === 'INR' ? '₹' : 
@@ -1620,45 +1861,421 @@ export default function HotelOwnerDashboard() {
         )}
 
         {/* ─────────────────────────────────────────────────────────── */}
-        {/* TAB 7: STAFF & OPERATIONS                                   */}
+        {/* TAB 7: STAFF MANAGEMENT & DAILY ATTENDANCE                  */}
         {/* ─────────────────────────────────────────────────────────── */}
         {activeTab === 'staff' && (
-          <div className="p-8 space-y-6 animate-fade-in">
-            <div className="flex items-center justify-between">
+          <div className="p-6 sm:p-8 space-y-6 animate-fade-in">
+            {/* Main Header with Sub-tabs and Registration */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <h3 className="text-xl font-black text-slate-900">Hotel Staff & Daily Operations</h3>
-                <p className="text-xs text-slate-500">Concierge, Front Desk, Housekeeping, and Culinary personnel</p>
+                <p className="text-xs text-slate-500">Track daily employee attendance, shifts, leave records, and team roster</p>
               </div>
-              {(isSuperAdmin || hasPermission('STAFF', 'can_add')) && (
-                <button
-                  onClick={() => setShowAddStaffModal(true)}
-                  className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" /> Register Staff Member
-                </button>
-              )}
+
+              <div className="flex flex-wrap items-center gap-2">
+                {/* View Switcher Pills */}
+                <div className="flex p-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setStaffSubTab('attendance')}
+                    className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                      staffSubTab === 'attendance'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <CalendarCheck className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Daily Attendance</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStaffSubTab('directory')}
+                    className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                      staffSubTab === 'directory'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Staff Directory</span>
+                  </button>
+                </div>
+
+                {(isSuperAdmin || hasPermission('STAFF', 'can_add')) && (
+                  <button
+                    onClick={() => setShowAddStaffModal(true)}
+                    className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Register Staff</span>
+                  </button>
+                )}
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {staff.map((s) => (
-                <div key={s.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center font-bold text-amber-700 text-sm">
-                      {s.name.charAt(0)}
+            {/* ── SUB-TAB 1: DAILY ATTENDANCE MANAGEMENT ── */}
+            {staffSubTab === 'attendance' && (
+              <div className="space-y-6">
+                {/* Date Controls & Filter Bar */}
+                <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  {/* Left: Interactive Date Navigator */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => handleShiftAttendanceDay(-1)}
+                        className="p-1.5 rounded-lg hover:bg-white text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+                        title="Previous Day"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      <input
+                        type="date"
+                        value={attendanceDate}
+                        onChange={e => setAttendanceDate(e.target.value)}
+                        className="px-2 py-1 text-xs font-black text-slate-900 bg-transparent focus:outline-none cursor-pointer"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleShiftAttendanceDay(1)}
+                        className="p-1.5 rounded-lg hover:bg-white text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+                        title="Next Day"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
                     </div>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      {s.status}
-                    </span>
+
+                    <button
+                      type="button"
+                      onClick={handleSetAttendanceToday}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                        attendanceDate === new Date().toISOString().split('T')[0]
+                          ? 'bg-amber-50 text-amber-800 border-amber-300 font-black'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      Today
+                    </button>
+
+                    <div className="text-xs font-bold text-slate-500 hidden sm:block pl-1">
+                      {new Date(attendanceDate + 'T00:00:00').toLocaleDateString('en-US', {
+                        weekday: 'short',
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                      })}
+                    </div>
                   </div>
-                  <h4 className="text-base font-black text-slate-900">{s.name}</h4>
-                  <p className="text-xs font-bold text-amber-600 mb-2">{s.role}</p>
-                  <div className="text-xs text-slate-500 space-y-0.5 pt-2 border-t border-slate-100">
-                    <p>Shift: <strong className="text-slate-700">{s.shift}</strong></p>
-                    <p className="font-mono text-[11px]">{s.email || s.phone || 'No direct contact'}</p>
+
+                  {/* Right: Quick Batch Actions & Search */}
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {/* Shift Filter Pills */}
+                    <div className="flex p-0.5 rounded-xl bg-slate-100 border border-slate-200 text-[11px] font-bold">
+                      {['ALL', 'MORNING', 'EVENING', 'NIGHT'].map(sh => (
+                        <button
+                          key={sh}
+                          type="button"
+                          onClick={() => setStaffShiftFilter(sh)}
+                          className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                            staffShiftFilter === sh
+                              ? 'bg-white text-slate-900 shadow-xs font-black'
+                              : 'text-slate-500 hover:text-slate-900'
+                          }`}
+                        >
+                          {sh === 'ALL' ? 'All Shifts' : sh}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Search */}
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={staffSearchQuery}
+                        onChange={e => setStaffSearchQuery(e.target.value)}
+                        placeholder="Filter by name / role..."
+                        className="w-44 sm:w-52 pl-8 pr-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-amber-500"
+                      />
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                    </div>
+
+                    {/* Mark All Present Button */}
+                    <button
+                      type="button"
+                      onClick={handleBatchMarkAllPresent}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all flex items-center gap-1 cursor-pointer shadow-xs"
+                      title="Quickly mark all active staff as Present for this day"
+                    >
+                      <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                      <span>Mark All Present</span>
+                    </button>
                   </div>
                 </div>
-              ))}
-            </div>
+
+                {/* Daily Attendance Summary Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3.5">
+                  {/* Total Staff */}
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold">
+                      <Users className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Staff</span>
+                      <span className="text-xl font-black text-slate-900">{attendanceSummary.totalStaff}</span>
+                    </div>
+                  </div>
+
+                  {/* Present */}
+                  <div className="bg-white p-4 rounded-2xl border border-emerald-200 bg-emerald-50/30 shadow-xs flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                      <Check className="w-5 h-5 stroke-[2.5]" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">Present</span>
+                      <span className="text-xl font-black text-emerald-700">{attendanceSummary.present}</span>
+                    </div>
+                  </div>
+
+                  {/* Absent */}
+                  <div className="bg-white p-4 rounded-2xl border border-rose-200 bg-rose-50/30 shadow-xs flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold">
+                      <X className="w-5 h-5 stroke-[2.5]" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider block">Absent</span>
+                      <span className="text-xl font-black text-rose-700">{attendanceSummary.absent}</span>
+                    </div>
+                  </div>
+
+                  {/* Half Day */}
+                  <div className="bg-white p-4 rounded-2xl border border-amber-200 bg-amber-50/30 shadow-xs flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
+                      <Clock className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">Half Day</span>
+                      <span className="text-xl font-black text-amber-800">{attendanceSummary.halfDay}</span>
+                    </div>
+                  </div>
+
+                  {/* On Leave */}
+                  <div className="bg-white p-4 rounded-2xl border border-purple-200 bg-purple-50/30 shadow-xs flex items-center gap-3 col-span-2 sm:col-span-1">
+                    <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                      <Calendar className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider block">On Leave</span>
+                      <span className="text-xl font-black text-purple-800">{attendanceSummary.leave}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Staff Attendance List */}
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black uppercase tracking-wider text-slate-700">Staff Attendance Roster</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700">
+                        {filteredStaffAttendance.length} staff
+                      </span>
+                    </div>
+                    {attendanceSummary.unmarked > 0 && (
+                      <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+                        ⚠️ {attendanceSummary.unmarked} staff pending attendance for today
+                      </span>
+                    )}
+                  </div>
+
+                  {filteredStaffAttendance.length === 0 ? (
+                    <div className="p-12 text-center text-slate-400 text-xs font-medium">
+                      No staff members match the selected filters.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {filteredStaffAttendance.map(member => {
+                        const status = member.attendance_status;
+                        const isPresent = status === 'PRESENT';
+                        const isAbsent = status === 'ABSENT';
+                        const isHalfDay = status === 'HALF_DAY';
+                        const isLeave = status === 'LEAVE';
+                        const isUnmarked = !status || status === 'UNMARKED';
+
+                        return (
+                          <div
+                            key={member.staff_id || member.id}
+                            className={`p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors hover:bg-slate-50/70 ${
+                              isAbsent ? 'bg-rose-50/20' : isPresent ? 'bg-emerald-50/15' : ''
+                            }`}
+                          >
+                            {/* Staff Member Info */}
+                            <div className="flex items-center gap-3.5 min-w-[240px]">
+                              <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-black text-sm shrink-0 border ${
+                                member.shift === 'MORNING' ? 'bg-amber-50 border-amber-200 text-amber-800' :
+                                member.shift === 'EVENING' ? 'bg-indigo-50 border-indigo-200 text-indigo-800' :
+                                'bg-slate-100 border-slate-300 text-slate-800'
+                              }`}>
+                                {member.name ? member.name.charAt(0).toUpperCase() : 'S'}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <h4 className="text-sm font-black text-slate-900">{member.name}</h4>
+                                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
+                                    member.shift === 'MORNING' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                    member.shift === 'EVENING' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                                    'bg-slate-100 text-slate-700 border-slate-200'
+                                  }`}>
+                                    {member.shift || 'MORNING'}
+                                  </span>
+                                </div>
+                                <p className="text-xs font-semibold text-slate-500 mt-0.5">{member.role}</p>
+                                <p className="text-[11px] font-mono text-slate-400 mt-0.5">
+                                  {member.phone || member.email || 'No contact specified'}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Current Status Badge */}
+                            <div className="flex items-center gap-2 min-w-[130px]">
+                              {isPresent && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                                  Present
+                                </span>
+                              )}
+                              {isAbsent && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-800 border border-rose-300">
+                                  <span className="w-2 h-2 rounded-full bg-rose-500" />
+                                  Absent
+                                </span>
+                              )}
+                              {isHalfDay && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-900 border border-amber-300">
+                                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                                  Half Day
+                                </span>
+                              )}
+                              {isLeave && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-purple-100 text-purple-900 border border-purple-300">
+                                  <span className="w-2 h-2 rounded-full bg-purple-500" />
+                                  On Leave
+                                </span>
+                              )}
+                              {isUnmarked && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500 border border-dashed border-slate-300">
+                                  <span className="w-2 h-2 rounded-full bg-slate-400" />
+                                  Unmarked
+                                </span>
+                              )}
+                              {member.notes && (
+                                <span className="text-[10px] text-slate-400 italic truncate max-w-[120px]" title={member.notes}>
+                                  "{member.notes}"
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Quick Attendance Marking Actions */}
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {/* Quick 1-Click Present */}
+                              <button
+                                type="button"
+                                onClick={() => handleMarkAttendance(member, 'PRESENT')}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1 cursor-pointer border ${
+                                  isPresent
+                                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                                    : 'bg-white hover:bg-emerald-50 text-emerald-700 border-slate-200 hover:border-emerald-300'
+                                }`}
+                                title="Mark Present"
+                              >
+                                <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                                <span>Present</span>
+                              </button>
+
+                              {/* Quick 1-Click Absent */}
+                              <button
+                                type="button"
+                                onClick={() => handleMarkAttendance(member, 'ABSENT')}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1 cursor-pointer border ${
+                                  isAbsent
+                                    ? 'bg-rose-600 text-white border-rose-700 shadow-xs'
+                                    : 'bg-white hover:bg-rose-50 text-rose-700 border-slate-200 hover:border-rose-300'
+                                }`}
+                                title="Mark Absent"
+                              >
+                                <X className="w-3.5 h-3.5 stroke-[2.5]" />
+                                <span>Absent</span>
+                              </button>
+
+                              {/* Dropdown for Half Day / Leave / Edit */}
+                              <select
+                                value={status === 'UNMARKED' ? '' : status}
+                                onChange={e => {
+                                  if (e.target.value) {
+                                    handleMarkAttendance(member, e.target.value);
+                                  }
+                                }}
+                                className="px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:border-slate-300 cursor-pointer focus:outline-none"
+                              >
+                                <option value="" disabled>Status ▾</option>
+                                <option value="PRESENT">Present</option>
+                                <option value="ABSENT">Absent</option>
+                                <option value="HALF_DAY">Half Day</option>
+                                <option value="LEAVE">Leave</option>
+                              </select>
+
+                              {/* Monthly History Button */}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenMonthlyHistory(member)}
+                                className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                                title="View monthly attendance history"
+                              >
+                                <CalendarDays className="w-3.5 h-3.5 text-slate-600" />
+                                <span>History</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── SUB-TAB 2: STAFF DIRECTORY ROSTER ── */}
+            {staffSubTab === 'directory' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {staff.map((s) => (
+                  <div key={s.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div>
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center font-bold text-amber-700 text-sm">
+                          {s.name.charAt(0)}
+                        </div>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          {s.status}
+                        </span>
+                      </div>
+                      <h4 className="text-base font-black text-slate-900">{s.name}</h4>
+                      <p className="text-xs font-bold text-amber-600 mb-2">{s.role}</p>
+                      <div className="text-xs text-slate-500 space-y-0.5 pt-2 border-t border-slate-100">
+                        <p>Shift: <strong className="text-slate-700">{s.shift}</strong></p>
+                        <p className="font-mono text-[11px]">{s.email || s.phone || 'No direct contact'}</p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleOpenMonthlyHistory(s)}
+                      className="w-full mt-4 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <CalendarDays className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Monthly Attendance</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -3168,6 +3785,174 @@ export default function HotelOwnerDashboard() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MONTHLY ATTENDANCE HISTORY MODAL ── */}
+      {showHistoryModal && historyStaff && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="p-6 bg-slate-50 border-b border-slate-200 flex justify-between items-start shrink-0">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-black text-lg shadow-sm">
+                  {historyStaff.name ? historyStaff.name.charAt(0).toUpperCase() : 'S'}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-black text-slate-900">{historyStaff.name}</h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-200 text-slate-700">
+                      {historyStaff.shift} Shift
+                    </span>
+                  </div>
+                  <p className="text-xs font-bold text-amber-600">{historyStaff.role}</p>
+                  <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                    {historyStaff.phone || historyStaff.email || 'No contact'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowHistoryModal(false)}
+                className="w-8 h-8 rounded-full bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 flex items-center justify-center text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Month Selector & Summary Stats */}
+            <div className="p-6 border-b border-slate-200 space-y-4 shrink-0 bg-white">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Attendance Period</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleShiftHistoryMonth(-1)}
+                    className="p-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
+                    title="Previous Month"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="text-sm font-black text-slate-900 min-w-[130px] text-center">
+                    {new Date(historyMonth + '-01T00:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleShiftHistoryMonth(1)}
+                    className="p-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
+                    title="Next Month"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Monthly Stats Cards */}
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 pt-2">
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-center">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase block">Total Days</span>
+                  <span className="text-base font-black text-slate-900">
+                    {monthlyHistoryData?.stats?.totalDaysMarked ?? 0}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-center">
+                  <span className="text-[9px] font-bold text-emerald-600 uppercase block">Present</span>
+                  <span className="text-base font-black text-emerald-800">
+                    {monthlyHistoryData?.stats?.present ?? 0}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-center">
+                  <span className="text-[9px] font-bold text-rose-600 uppercase block">Absent</span>
+                  <span className="text-base font-black text-rose-800">
+                    {monthlyHistoryData?.stats?.absent ?? 0}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-center">
+                  <span className="text-[9px] font-bold text-amber-700 uppercase block">Half Day</span>
+                  <span className="text-base font-black text-amber-900">
+                    {monthlyHistoryData?.stats?.halfDay ?? 0}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-purple-50 border border-purple-200 text-center">
+                  <span className="text-[9px] font-bold text-purple-700 uppercase block">Leave</span>
+                  <span className="text-base font-black text-purple-900">
+                    {monthlyHistoryData?.stats?.leave ?? 0}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200 text-center">
+                  <span className="text-[9px] font-bold text-indigo-600 uppercase block">Attendance</span>
+                  <span className="text-base font-black text-indigo-900">
+                    {monthlyHistoryData?.stats?.attendancePercentage ?? 0}%
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Day-by-Day History Record Log */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-3">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-700">Detailed Daily Logs</span>
+                <span className="text-[11px] text-slate-400">Click dropdown to correct any day</span>
+              </div>
+
+              {historyLoading ? (
+                <div className="p-8 text-center text-xs text-slate-400">Loading history...</div>
+              ) : !monthlyHistoryData?.history || monthlyHistoryData.history.length === 0 ? (
+                <div className="p-8 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                  No attendance records recorded for this staff member in {new Date(historyMonth + '-01T00:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden bg-white">
+                  {monthlyHistoryData.history.map(row => (
+                    <div key={row.id || row.attendance_date} className="p-3.5 flex items-center justify-between text-xs hover:bg-slate-50">
+                      <div>
+                        <span className="font-black text-slate-900 block">
+                          {new Date(row.attendance_date + 'T00:00:00').toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            day: 'numeric',
+                            month: 'short'
+                          })}
+                        </span>
+                        {row.notes && (
+                          <span className="text-[11px] text-slate-400 italic">"{row.notes}"</span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={row.status}
+                          onChange={e => handleUpdateHistoricalAttendance(row.attendance_date, e.target.value)}
+                          className={`text-xs font-black px-2.5 py-1 rounded-full uppercase tracking-wider border cursor-pointer focus:outline-none ${
+                            row.status === 'PRESENT' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                            row.status === 'ABSENT' ? 'bg-rose-100 text-rose-800 border-rose-300' :
+                            row.status === 'HALF_DAY' ? 'bg-amber-100 text-amber-900 border-amber-300' :
+                            'bg-purple-100 text-purple-900 border-purple-300'
+                          }`}
+                        >
+                          <option value="PRESENT">Present</option>
+                          <option value="ABSENT">Absent</option>
+                          <option value="HALF_DAY">Half Day</option>
+                          <option value="LEAVE">Leave</option>
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowHistoryModal(false)}
+                className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

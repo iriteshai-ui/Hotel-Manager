@@ -110,6 +110,23 @@ export async function initMultiTenantSchema() {
         ip_address VARCHAR(100),
         timestamp TIMESTAMPTZ DEFAULT NOW()
       );
+
+      -- 8. Hotel Staff Daily Attendance Management
+      CREATE TABLE IF NOT EXISTS hotel_staff_attendance (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        hotel_id UUID NOT NULL REFERENCES hotels(id) ON DELETE CASCADE,
+        staff_id UUID NOT NULL REFERENCES hotel_staff(id) ON DELETE CASCADE,
+        attendance_date DATE NOT NULL,
+        status VARCHAR(50) NOT NULL, -- 'PRESENT', 'ABSENT', 'HALF_DAY', 'LEAVE'
+        notes TEXT DEFAULT '',
+        marked_by VARCHAR(255),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        CONSTRAINT unique_hotel_staff_date UNIQUE (hotel_id, staff_id, attendance_date)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_staff_attendance_hotel_date ON hotel_staff_attendance(hotel_id, attendance_date);
+      CREATE INDEX IF NOT EXISTS idx_staff_attendance_staff_date ON hotel_staff_attendance(staff_id, attendance_date);
     `);
 
     // 8. Seed Sample Hotels: Hotel A (Grand Horizon Resort) and Hotel B (The Royal Palms)
@@ -931,5 +948,154 @@ export const multiTenantDb = {
       RETURNING *;
     `, [hotelId, name, role, email || '', phone || '', shift]);
     return res.rows[0];
+  },
+
+  async getStaffAttendanceByDate(hotelId, date) {
+    const formattedDate = date || new Date().toISOString().split('T')[0];
+    const res = await pool.query(`
+      SELECT 
+        s.id AS staff_id,
+        s.name,
+        s.role,
+        s.shift,
+        s.email,
+        s.phone,
+        s.status AS staff_status,
+        a.id AS attendance_id,
+        TO_CHAR(COALESCE(a.attendance_date, $2::date), 'YYYY-MM-DD') AS attendance_date,
+        COALESCE(a.status, 'UNMARKED') AS attendance_status,
+        COALESCE(a.notes, '') AS notes,
+        a.marked_by,
+        a.updated_at
+      FROM hotel_staff s
+      LEFT JOIN hotel_staff_attendance a 
+        ON a.staff_id = s.id 
+        AND a.hotel_id = s.hotel_id 
+        AND a.attendance_date = $2::date
+      WHERE s.hotel_id = $1 AND s.status = 'ACTIVE'
+      ORDER BY s.name ASC;
+    `, [hotelId, formattedDate]);
+
+    const records = res.rows;
+    const summary = {
+      totalStaff: records.length,
+      present: records.filter(r => r.attendance_status === 'PRESENT').length,
+      absent: records.filter(r => r.attendance_status === 'ABSENT').length,
+      halfDay: records.filter(r => r.attendance_status === 'HALF_DAY').length,
+      leave: records.filter(r => r.attendance_status === 'LEAVE').length,
+      unmarked: records.filter(r => r.attendance_status === 'UNMARKED').length
+    };
+
+    return {
+      date: formattedDate,
+      records,
+      summary
+    };
+  },
+
+  async markStaffAttendance(hotelId, { staffId, date, status, notes = '', markedBy = 'Hotel Owner' }) {
+    const validStatuses = ['PRESENT', 'ABSENT', 'HALF_DAY', 'LEAVE'];
+    const normStatus = (status || '').toUpperCase().trim();
+    if (!validStatuses.includes(normStatus)) {
+      throw new Error(`Invalid attendance status: ${status}. Must be one of ${validStatuses.join(', ')}`);
+    }
+
+    const formattedDate = date || new Date().toISOString().split('T')[0];
+
+    const res = await pool.query(`
+      INSERT INTO hotel_staff_attendance (hotel_id, staff_id, attendance_date, status, notes, marked_by, updated_at)
+      VALUES ($1, $2, $3::date, $4, $5, $6, NOW())
+      ON CONFLICT (hotel_id, staff_id, attendance_date)
+      DO UPDATE SET 
+        status = EXCLUDED.status, 
+        notes = EXCLUDED.notes, 
+        marked_by = EXCLUDED.marked_by, 
+        updated_at = NOW()
+      RETURNING *, TO_CHAR(attendance_date, 'YYYY-MM-DD') AS attendance_date;
+    `, [hotelId, staffId, formattedDate, normStatus, notes, markedBy]);
+
+    return res.rows[0];
+  },
+
+  async batchMarkStaffAttendance(hotelId, { date, status = 'PRESENT', markedBy = 'Hotel Owner' }) {
+    const validStatuses = ['PRESENT', 'ABSENT', 'HALF_DAY', 'LEAVE'];
+    const normStatus = (status || 'PRESENT').toUpperCase().trim();
+    if (!validStatuses.includes(normStatus)) {
+      throw new Error(`Invalid status: ${status}`);
+    }
+
+    const formattedDate = date || new Date().toISOString().split('T')[0];
+
+    const staffRes = await pool.query(`
+      SELECT id FROM hotel_staff WHERE hotel_id = $1 AND status = 'ACTIVE'
+    `, [hotelId]);
+
+    for (const s of staffRes.rows) {
+      await pool.query(`
+        INSERT INTO hotel_staff_attendance (hotel_id, staff_id, attendance_date, status, marked_by, updated_at)
+        VALUES ($1, $2, $3::date, $4, $5, NOW())
+        ON CONFLICT (hotel_id, staff_id, attendance_date)
+        DO UPDATE SET status = EXCLUDED.status, marked_by = EXCLUDED.marked_by, updated_at = NOW();
+      `, [hotelId, s.id, formattedDate, normStatus, markedBy]);
+    }
+
+    return await this.getStaffAttendanceByDate(hotelId, formattedDate);
+  },
+
+  async getStaffMonthlyHistory(hotelId, staffId, month) {
+    const currentMonth = month || new Date().toISOString().slice(0, 7);
+
+    const staffRes = await pool.query(`
+      SELECT id, name, role, shift, email, phone, status 
+      FROM hotel_staff 
+      WHERE id = $1 AND hotel_id = $2;
+    `, [staffId, hotelId]);
+
+    if (staffRes.rows.length === 0) {
+      return null;
+    }
+
+    const staffMember = staffRes.rows[0];
+
+    const attendanceRes = await pool.query(`
+      SELECT 
+        id,
+        staff_id,
+        TO_CHAR(attendance_date, 'YYYY-MM-DD') AS attendance_date,
+        status,
+        notes,
+        marked_by,
+        created_at,
+        updated_at
+      FROM hotel_staff_attendance
+      WHERE hotel_id = $1 
+        AND staff_id = $2 
+        AND TO_CHAR(attendance_date, 'YYYY-MM') = $3
+      ORDER BY attendance_date DESC;
+    `, [hotelId, staffId, currentMonth]);
+
+    const history = attendanceRes.rows;
+
+    const present = history.filter(h => h.status === 'PRESENT').length;
+    const absent = history.filter(h => h.status === 'ABSENT').length;
+    const halfDay = history.filter(h => h.status === 'HALF_DAY').length;
+    const leave = history.filter(h => h.status === 'LEAVE').length;
+    const totalMarked = history.length;
+    const presentEquivalent = present + (halfDay * 0.5);
+    const attendancePercentage = totalMarked > 0 ? Number(((presentEquivalent / totalMarked) * 100).toFixed(1)) : 0;
+
+    return {
+      staff: staffMember,
+      month: currentMonth,
+      stats: {
+        totalDaysMarked: totalMarked,
+        present,
+        absent,
+        halfDay,
+        leave,
+        attendancePercentage
+      },
+      history
+    };
   }
 };
