@@ -9,7 +9,8 @@ import {
   RefreshCw, LogOut, ArrowUpRight, BarChart3, CreditCard, Shield, 
   Clock, Download, Filter, UserCheck, AlertCircle, Wrench, Sparkles, ChevronRight,
   UtensilsCrossed, ChefHat, Receipt, Trash2, Printer, Check, Edit3,
-  Calendar, CalendarDays, ChevronLeft, UserX, X
+  Calendar, CalendarDays, ChevronLeft, UserX, X,
+  LayoutDashboard, Package, ArrowDownRight, Layers
 } from 'lucide-react';
 
 export default function HotelOwnerDashboard() {
@@ -19,7 +20,19 @@ export default function HotelOwnerDashboard() {
   const hotelIdQuery = searchParams.get('hotelId');
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState('overview');
+  // Primary Restaurant Landing Tab
+  const [activeTab, setActiveTab] = useState(() => {
+    const param = new URLSearchParams(window.location.search).get('tab');
+    if (!param) return 'dining-dashboard';
+    if (param === 'overview') return 'dining-dashboard';
+    if (param === 'dining-tables') return 'table-management';
+    if (param === 'live-orders') return 'order-management';
+    if (param === 'dining-menu') return 'menu-management';
+    if (param === 'financials') return 'sales-billing';
+    if (param === 'staff') return 'staff-attendance';
+    if (param === 'bookings' || param === 'rooms' || param === 'customers') return 'hotel-rooms';
+    return param;
+  });
   const [dateRange, setDateRange] = useState('last_30_days');
   const [dashboardData, setDashboardData] = useState(null);
   const [analyticsData, setAnalyticsData] = useState(null);
@@ -31,6 +44,57 @@ export default function HotelOwnerDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [toastMsg, setToastMsg] = useState(null);
+
+  // Restaurant First: Dining Dashboard, Expenses, Inventory, P&L
+  const [diningDashboardData, setDiningDashboardData] = useState(null);
+  const [diningLoading, setDiningLoading] = useState(false);
+  const [salesReportPeriod, setSalesReportPeriod] = useState('daily'); // 'daily', 'weekly', 'monthly'
+
+  // Orders Management Filters
+  const [orderSearchQuery, setOrderSearchQuery] = useState('');
+  const [orderMgmtStatusFilter, setOrderMgmtStatusFilter] = useState('ALL');
+  const [orderTableFilter, setOrderTableFilter] = useState('ALL');
+  const [orderDateFilter, setOrderDateFilter] = useState('ALL');
+
+  // Expenses State
+  const [expensesList, setExpensesList] = useState([]);
+  const [totalExpensesAmount, setTotalExpensesAmount] = useState(0);
+  const [expenseCategories, setExpenseCategories] = useState({});
+  const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('ALL');
+  const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
+  const [newExpenseForm, setNewExpenseForm] = useState({
+    title: '',
+    category: 'Meat & Poultry',
+    amount: '',
+    paymentMethod: 'UPI',
+    notes: '',
+    expenseDate: new Date().toISOString().split('T')[0]
+  });
+
+  // Inventory State
+  const [inventoryList, setInventoryList] = useState([]);
+  const [inventoryStats, setInventoryStats] = useState({ totalItems: 0, lowStockCount: 0, totalValuation: 0 });
+  const [inventoryCategoryFilter, setInventoryCategoryFilter] = useState('ALL');
+  const [inventoryStatusFilter, setInventoryStatusFilter] = useState('ALL');
+  const [showAddInventoryModal, setShowAddInventoryModal] = useState(false);
+  const [newInventoryForm, setNewInventoryForm] = useState({
+    itemName: '',
+    category: 'Grains & Rice',
+    quantity: '',
+    unit: 'kg',
+    minThreshold: 5,
+    costPerUnit: ''
+  });
+  const [showRestockModal, setShowRestockModal] = useState(false);
+  const [restockTargetItem, setRestockTargetItem] = useState(null);
+  const [restockAddQuantity, setRestockAddQuantity] = useState('');
+
+  // Profit & Loss State
+  const [plPeriod, setPlPeriod] = useState('monthly');
+  const [plReportData, setPlReportData] = useState(null);
+
+  // Hotel Room Management Sub-tab
+  const [roomSubTab, setRoomSubTab] = useState('inventory'); // 'inventory', 'reservations', 'guests'
 
   // Restaurant & Dining Management State
   const [hotelTables, setHotelTables] = useState([]);

@@ -165,11 +165,11 @@ export const AuthProvider = ({ children }) => {
 
   /**
    * Check if the authenticated user has a specific granular permission on a module.
-   * Super Admin always evaluates to true (wildcard).
+   * Super Admin and Hotel Owner have full access to manage their hotel operations.
    * Otherwise checks role-based permissions matrix fetched from Supabase PostgreSQL.
    */
   const hasPermission = (moduleCode, action = 'can_view') => {
-    if (isSuperAdmin) return true;
+    if (isSuperAdmin || isHotelOwner) return true;
     if (!permissions || !permissions[moduleCode]) return false;
     const mod = permissions[moduleCode];
     if (mod.can_manage === true) return true;
@@ -180,7 +180,7 @@ export const AuthProvider = ({ children }) => {
    * Check if user is allowed to access and see a menu module.
    */
   const canAccessModule = (moduleCode) => {
-    if (isSuperAdmin) return true;
+    if (isSuperAdmin || isHotelOwner) return true;
     return hasPermission(moduleCode, 'can_view');
   };
 

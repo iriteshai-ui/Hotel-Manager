@@ -29,13 +29,12 @@ const NavBar = ({ title, statusBadge, hotel }) => {
         { label: 'Waiter View', path: '/waiter' },
       ];
     } else {
-      if (canAccessModule('DASHBOARD') || canAccessModule('BOOKINGS') || canAccessModule('ROOMS')) {
-        navLinks.push({ label: 'Hotel Dashboard', path: '/hotel-dashboard' });
-      }
-      if (canAccessModule('DINING_MENU')) {
-        navLinks.push({ label: 'Dining Tables & POS', path: '/hotel-dashboard?tab=dining-tables' });
-        navLinks.push({ label: 'Menu & Dishes', path: hotel?.slug ? `/menu?hotel=${hotel.slug}` : '/hotel-dashboard?tab=dining-menu' });
-      }
+      navLinks.push({ label: 'Dining Dashboard', path: '/hotel-dashboard?tab=dining-dashboard' });
+      navLinks.push({ label: 'Order Management', path: '/hotel-dashboard?tab=order-management' });
+      navLinks.push({ label: 'Table Management', path: '/hotel-dashboard?tab=table-management' });
+      navLinks.push({ label: 'Menu Management', path: '/hotel-dashboard?tab=menu-management' });
+      navLinks.push({ label: 'Sales & Billing', path: '/hotel-dashboard?tab=sales-billing' });
+
       if (role === 'WAITER' || (roles && roles.includes('STAFF'))) {
         navLinks.push({ label: 'Waiter View', path: '/waiter' });
       }

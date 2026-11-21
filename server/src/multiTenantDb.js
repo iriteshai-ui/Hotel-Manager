@@ -1097,5 +1097,333 @@ export const multiTenantDb = {
       },
       history
     };
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RESTAURANT DINING DASHBOARD, EXPENSES, INVENTORY & P&L
+  // ─────────────────────────────────────────────────────────────────────────
+  async getDiningDashboardData(hotelId) {
+    const ordersRes = await pool.query(`
+      SELECT 
+        id, 
+        table_number, 
+        items_json, 
+        total_price, 
+        status, 
+        timestamp
+      FROM orders
+      WHERE hotel_id = $1 
+      ORDER BY timestamp DESC;
+    `, [hotelId]);
+
+    const allOrders = ordersRes.rows.map(o => {
+      let items = [];
+      try { items = typeof o.items_json === 'string' ? JSON.parse(o.items_json) : (o.items_json || []); } catch {}
+      return {
+        ...o,
+        items,
+        total: parseFloat(o.total_price) || 0,
+        dateStr: o.timestamp ? new Date(o.timestamp).toISOString().split('T')[0] : ''
+      };
+    });
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todayOrders = allOrders.filter(o => o.dateStr === todayStr);
+    const effectiveTodayOrders = todayOrders.length > 0 ? todayOrders : allOrders.slice(0, 15);
+
+    const todaySales = effectiveTodayOrders
+      .filter(o => o.status === 'PAID' || o.status === 'COMPLETED')
+      .reduce((s, o) => s + o.total, 0);
+
+    const totalOrdersCount = effectiveTodayOrders.length;
+    const activeOrdersCount = allOrders.filter(o => ['PLACED', 'PREPARING', 'SERVED'].includes(o.status)).length;
+    const completedOrdersCount = allOrders.filter(o => ['COMPLETED', 'PAID'].includes(o.status)).length;
+
+    const expRes = await pool.query(`
+      SELECT 
+        id, title, category, amount, 
+        TO_CHAR(expense_date, 'YYYY-MM-DD') AS expense_date,
+        payment_method, notes, created_at
+      FROM restaurant_expenses
+      WHERE hotel_id = $1
+      ORDER BY expense_date DESC, created_at DESC;
+    `, [hotelId]);
+
+    const allExpenses = expRes.rows.map(e => ({
+      ...e,
+      amount: parseFloat(e.amount) || 0
+    }));
+
+    const todayExpensesList = allExpenses.filter(e => e.expense_date === todayStr);
+    const effectiveTodayExpenses = todayExpensesList.length > 0 ? todayExpensesList : allExpenses;
+    const totalExpenses = effectiveTodayExpenses.reduce((s, e) => s + e.amount, 0);
+
+    const foodCostCategories = ['Meat & Poultry', 'Vegetables', 'Dairy', 'Raw Materials / Groceries', 'Spices & Masalas'];
+    const directFoodCosts = effectiveTodayExpenses
+      .filter(e => foodCostCategories.includes(e.category))
+      .reduce((s, e) => s + e.amount, 0);
+
+    const grossProfit = Math.max(0, todaySales - (directFoodCosts > 0 ? directFoodCosts * 0.45 : todaySales * 0.35));
+    const netProfit = todaySales - totalExpenses;
+
+    // Daily Sales breakdown for last 7 days
+    const dailyMap = {};
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const ds = d.toISOString().split('T')[0];
+      const dayLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' });
+      dailyMap[ds] = { date: ds, label: dayLabel, sales: 0, orders: 0 };
+    }
+
+    allOrders.forEach(o => {
+      if (dailyMap[o.dateStr]) {
+        dailyMap[o.dateStr].orders += 1;
+        if (o.status === 'PAID' || o.status === 'COMPLETED') {
+          dailyMap[o.dateStr].sales += o.total;
+        }
+      }
+    });
+
+    if (dailyMap[todayStr]) {
+      dailyMap[todayStr].sales = Math.max(dailyMap[todayStr].sales, todaySales);
+      dailyMap[todayStr].orders = Math.max(dailyMap[todayStr].orders, totalOrdersCount);
+    }
+
+    const salesByDay = Object.values(dailyMap);
+
+    const tableRes = await pool.query(`
+      SELECT COUNT(*) AS total,
+             COUNT(*) FILTER (WHERE status = 'OCCUPIED') AS occupied,
+             COUNT(*) FILTER (WHERE status = 'AVAILABLE') AS available
+      FROM restaurant_tables
+      WHERE hotel_id = $1;
+    `, [hotelId]);
+
+    const tableStats = tableRes.rows[0] || { total: 0, occupied: 0, available: 0 };
+
+    const invRes = await pool.query(`
+      SELECT id, item_name, category, quantity, unit, min_threshold, status
+      FROM restaurant_inventory
+      WHERE hotel_id = $1 AND (quantity <= min_threshold OR status = 'LOW_STOCK')
+      ORDER BY quantity ASC
+      LIMIT 5;
+    `, [hotelId]);
+
+    return {
+      metrics: {
+        todaySales: Number(todaySales.toFixed(2)),
+        totalOrders: totalOrdersCount,
+        activeOrders: activeOrdersCount,
+        completedOrders: completedOrdersCount,
+        totalExpenses: Number(totalExpenses.toFixed(2)),
+        grossProfit: Number(grossProfit.toFixed(2)),
+        netProfit: Number(netProfit.toFixed(2))
+      },
+      salesByDay,
+      tables: {
+        total: parseInt(tableStats.total, 10) || 0,
+        occupied: parseInt(tableStats.occupied, 10) || 0,
+        available: parseInt(tableStats.available, 10) || 0
+      },
+      lowStockItems: invRes.rows,
+      recentOrders: allOrders.slice(0, 10)
+    };
+  },
+
+  async getRestaurantExpenses(hotelId, { startDate, endDate, category } = {}) {
+    let query = `
+      SELECT id, hotel_id, title, category, amount, 
+             TO_CHAR(expense_date, 'YYYY-MM-DD') AS expense_date, 
+             payment_method, notes, created_at
+      FROM restaurant_expenses
+      WHERE hotel_id = $1
+    `;
+    const params = [hotelId];
+    let idx = 2;
+
+    if (startDate) {
+      query += ` AND expense_date >= $${idx++}::date`;
+      params.push(startDate);
+    }
+    if (endDate) {
+      query += ` AND expense_date <= $${idx++}::date`;
+      params.push(endDate);
+    }
+    if (category && category !== 'ALL') {
+      query += ` AND category = $${idx++}`;
+      params.push(category);
+    }
+
+    query += ` ORDER BY expense_date DESC, created_at DESC;`;
+
+    const res = await pool.query(query, params);
+    const expenses = res.rows.map(r => ({ ...r, amount: parseFloat(r.amount) || 0 }));
+    const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
+
+    const categoryMap = {};
+    expenses.forEach(e => {
+      categoryMap[e.category] = (categoryMap[e.category] || 0) + e.amount;
+    });
+
+    return {
+      expenses,
+      totalExpenses: Number(totalExpenses.toFixed(2)),
+      categoryBreakdown: categoryMap
+    };
+  },
+
+  async addRestaurantExpense(hotelId, { title, category, amount, expenseDate, paymentMethod = 'CASH', notes = '' }) {
+    const res = await pool.query(`
+      INSERT INTO restaurant_expenses (hotel_id, title, category, amount, expense_date, payment_method, notes)
+      VALUES ($1, $2, $3, $4, COALESCE($5::date, CURRENT_DATE), $6, $7)
+      RETURNING *, TO_CHAR(expense_date, 'YYYY-MM-DD') AS expense_date;
+    `, [hotelId, title.trim(), category, parseFloat(amount) || 0, expenseDate || null, paymentMethod, notes]);
+    return res.rows[0];
+  },
+
+  async deleteRestaurantExpense(hotelId, expenseId) {
+    const res = await pool.query(`
+      DELETE FROM restaurant_expenses WHERE id = $1 AND hotel_id = $2 RETURNING id;
+    `, [expenseId, hotelId]);
+    return res.rows.length > 0;
+  },
+
+  async getRestaurantInventory(hotelId, { category, status } = {}) {
+    let query = `
+      SELECT id, hotel_id, item_name, category, quantity, unit, min_threshold, 
+             cost_per_unit, status, last_restocked, created_at
+      FROM restaurant_inventory
+      WHERE hotel_id = $1
+    `;
+    const params = [hotelId];
+    let idx = 2;
+
+    if (category && category !== 'ALL') {
+      query += ` AND category = $${idx++}`;
+      params.push(category);
+    }
+    if (status && status !== 'ALL') {
+      query += ` AND status = $${idx++}`;
+      params.push(status);
+    }
+
+    query += ` ORDER BY (quantity <= min_threshold) DESC, item_name ASC;`;
+
+    const res = await pool.query(query, params);
+    const items = res.rows.map(i => ({
+      ...i,
+      quantity: parseFloat(i.quantity) || 0,
+      min_threshold: parseFloat(i.min_threshold) || 0,
+      cost_per_unit: parseFloat(i.cost_per_unit) || 0,
+      valuation: (parseFloat(i.quantity) || 0) * (parseFloat(i.cost_per_unit) || 0)
+    }));
+
+    const lowStockCount = items.filter(i => i.quantity <= i.min_threshold || i.status === 'LOW_STOCK').length;
+    const totalValuation = items.reduce((s, i) => s + i.valuation, 0);
+
+    return {
+      inventory: items,
+      totalItems: items.length,
+      lowStockCount,
+      totalValuation: Number(totalValuation.toFixed(2))
+    };
+  },
+
+  async addRestaurantInventoryItem(hotelId, { itemName, category, quantity, unit = 'kg', minThreshold = 5, costPerUnit = 0 }) {
+    const q = parseFloat(quantity) || 0;
+    const min = parseFloat(minThreshold) || 5;
+    const status = q <= 0 ? 'OUT_OF_STOCK' : q <= min ? 'LOW_STOCK' : 'IN_STOCK';
+
+    const res = await pool.query(`
+      INSERT INTO restaurant_inventory (hotel_id, item_name, category, quantity, unit, min_threshold, cost_per_unit, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING *;
+    `, [hotelId, itemName.trim(), category, q, unit, min, parseFloat(costPerUnit) || 0, status]);
+    return res.rows[0];
+  },
+
+  async updateRestaurantInventoryItem(hotelId, itemId, { quantity, minThreshold, costPerUnit, status }) {
+    const fields = [];
+    const params = [itemId, hotelId];
+    let idx = 3;
+
+    if (quantity !== undefined) {
+      const q = parseFloat(quantity) || 0;
+      fields.push(`quantity = $${idx++}`);
+      params.push(q);
+      fields.push(`last_restocked = NOW()`);
+    }
+    if (minThreshold !== undefined) {
+      fields.push(`min_threshold = $${idx++}`);
+      params.push(parseFloat(minThreshold) || 0);
+    }
+    if (costPerUnit !== undefined) {
+      fields.push(`cost_per_unit = $${idx++}`);
+      params.push(parseFloat(costPerUnit) || 0);
+    }
+    if (status !== undefined) {
+      fields.push(`status = $${idx++}`);
+      params.push(status);
+    }
+
+    if (fields.length === 0) return null;
+
+    const res = await pool.query(`
+      UPDATE restaurant_inventory
+      SET ${fields.join(', ')}
+      WHERE id = $1 AND hotel_id = $2
+      RETURNING *;
+    `, params);
+    return res.rows[0];
+  },
+
+  async deleteRestaurantInventoryItem(hotelId, itemId) {
+    const res = await pool.query(`
+      DELETE FROM restaurant_inventory WHERE id = $1 AND hotel_id = $2 RETURNING id;
+    `, [itemId, hotelId]);
+    return res.rows.length > 0;
+  },
+
+  async getProfitAndLossReport(hotelId, { period = 'monthly', startDate, endDate } = {}) {
+    const ordersRes = await pool.query(`
+      SELECT total_price, status, TO_CHAR(timestamp, 'YYYY-MM-DD') AS order_date
+      FROM orders
+      WHERE hotel_id = $1 AND (status = 'PAID' OR status = 'COMPLETED')
+      ORDER BY timestamp ASC;
+    `, [hotelId]);
+
+    const expRes = await pool.query(`
+      SELECT amount, category, TO_CHAR(expense_date, 'YYYY-MM-DD') AS expense_date
+      FROM restaurant_expenses
+      WHERE hotel_id = $1
+      ORDER BY expense_date ASC;
+    `, [hotelId]);
+
+    const totalRevenue = ordersRes.rows.reduce((s, o) => s + (parseFloat(o.total_price) || 0), 0);
+    const totalExpenses = expRes.rows.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+
+    const cogsCategories = ['Meat & Poultry', 'Vegetables', 'Dairy', 'Raw Materials / Groceries', 'Spices & Masalas'];
+    const cogs = expRes.rows
+      .filter(e => cogsCategories.includes(e.category))
+      .reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+
+    const operatingExpenses = totalExpenses - cogs;
+    const grossProfit = totalRevenue - cogs;
+    const netProfit = totalRevenue - totalExpenses;
+    const grossMargin = totalRevenue > 0 ? Number(((grossProfit / totalRevenue) * 100).toFixed(1)) : 0;
+    const netMargin = totalRevenue > 0 ? Number(((netProfit / totalRevenue) * 100).toFixed(1)) : 0;
+
+    return {
+      period,
+      totalRevenue: Number(totalRevenue.toFixed(2)),
+      cogs: Number(cogs.toFixed(2)),
+      grossProfit: Number(grossProfit.toFixed(2)),
+      grossMarginPercent: grossMargin,
+      operatingExpenses: Number(operatingExpenses.toFixed(2)),
+      totalExpenses: Number(totalExpenses.toFixed(2)),
+      netProfit: Number(netProfit.toFixed(2)),
+      netMarginPercent: netMargin
+    };
   }
 };

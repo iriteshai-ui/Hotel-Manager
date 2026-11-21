@@ -335,4 +335,137 @@ router.patch('/hotel/status', async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DINING DASHBOARD, EXPENSES, INVENTORY, AND PROFIT & LOSS ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/hotel-owner/dining/dashboard - Dedicated Restaurant First Dining Dashboard
+router.get('/dining/dashboard', async (req, res) => {
+  try {
+    const data = await multiTenantDb.getDiningDashboardData(req.targetHotelId);
+    res.json(data);
+  } catch (err) {
+    console.error('Dining dashboard error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch dining dashboard data' });
+  }
+});
+
+// GET /api/hotel-owner/expenses - Get restaurant expenses
+router.get('/expenses', async (req, res) => {
+  try {
+    const { startDate, endDate, category } = req.query;
+    const data = await multiTenantDb.getRestaurantExpenses(req.targetHotelId, { startDate, endDate, category });
+    res.json(data);
+  } catch (err) {
+    console.error('Expenses error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch expenses' });
+  }
+});
+
+// POST /api/hotel-owner/expenses - Add an expense
+router.post('/expenses', async (req, res) => {
+  try {
+    const { title, category, amount, expenseDate, paymentMethod, notes } = req.body || {};
+    if (!title || !title.trim()) return res.status(400).json({ error: 'Expense title is required' });
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0) return res.status(400).json({ error: 'Valid positive expense amount required' });
+
+    const expense = await multiTenantDb.addRestaurantExpense(req.targetHotelId, {
+      title,
+      category: category || 'Raw Materials / Groceries',
+      amount: numAmount,
+      expenseDate,
+      paymentMethod: paymentMethod || 'CASH',
+      notes: notes || ''
+    });
+
+    res.status(201).json(expense);
+  } catch (err) {
+    console.error('Add expense error:', err.message);
+    res.status(500).json({ error: 'Failed to record expense' });
+  }
+});
+
+// DELETE /api/hotel-owner/expenses/:id - Delete an expense
+router.delete('/expenses/:id', async (req, res) => {
+  try {
+    const deleted = await multiTenantDb.deleteRestaurantExpense(req.targetHotelId, req.params.id);
+    if (!deleted) return res.status(404).json({ error: 'Expense not found' });
+    res.json({ success: true, message: 'Expense deleted' });
+  } catch (err) {
+    console.error('Delete expense error:', err.message);
+    res.status(500).json({ error: 'Failed to delete expense' });
+  }
+});
+
+// GET /api/hotel-owner/inventory - Get restaurant inventory & stock alerts
+router.get('/inventory', async (req, res) => {
+  try {
+    const { category, status } = req.query;
+    const data = await multiTenantDb.getRestaurantInventory(req.targetHotelId, { category, status });
+    res.json(data);
+  } catch (err) {
+    console.error('Inventory error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch inventory' });
+  }
+});
+
+// POST /api/hotel-owner/inventory - Add inventory item
+router.post('/inventory', async (req, res) => {
+  try {
+    const { itemName, category, quantity, unit, minThreshold, costPerUnit } = req.body || {};
+    if (!itemName || !itemName.trim()) return res.status(400).json({ error: 'Item name is required' });
+
+    const item = await multiTenantDb.addRestaurantInventoryItem(req.targetHotelId, {
+      itemName,
+      category: category || 'Grains & Rice',
+      quantity: parseFloat(quantity) || 0,
+      unit: unit || 'kg',
+      minThreshold: parseFloat(minThreshold) || 5,
+      costPerUnit: parseFloat(costPerUnit) || 0
+    });
+
+    res.status(201).json(item);
+  } catch (err) {
+    console.error('Add inventory error:', err.message);
+    res.status(500).json({ error: 'Failed to add inventory item' });
+  }
+});
+
+// PUT /api/hotel-owner/inventory/:id - Update inventory item
+router.put('/inventory/:id', async (req, res) => {
+  try {
+    const updated = await multiTenantDb.updateRestaurantInventoryItem(req.targetHotelId, req.params.id, req.body || {});
+    if (!updated) return res.status(404).json({ error: 'Inventory item not found' });
+    res.json(updated);
+  } catch (err) {
+    console.error('Update inventory error:', err.message);
+    res.status(500).json({ error: 'Failed to update inventory item' });
+  }
+});
+
+// DELETE /api/hotel-owner/inventory/:id - Delete inventory item
+router.delete('/inventory/:id', async (req, res) => {
+  try {
+    const deleted = await multiTenantDb.deleteRestaurantInventoryItem(req.targetHotelId, req.params.id);
+    if (!deleted) return res.status(404).json({ error: 'Inventory item not found' });
+    res.json({ success: true, message: 'Item deleted' });
+  } catch (err) {
+    console.error('Delete inventory error:', err.message);
+    res.status(500).json({ error: 'Failed to delete inventory item' });
+  }
+});
+
+// GET /api/hotel-owner/reports/profit-loss - Restaurant Profit & Loss Summary
+router.get('/reports/profit-loss', async (req, res) => {
+  try {
+    const { period, startDate, endDate } = req.query;
+    const report = await multiTenantDb.getProfitAndLossReport(req.targetHotelId, { period, startDate, endDate });
+    res.json(report);
+  } catch (err) {
+    console.error('P&L report error:', err.message);
+    res.status(500).json({ error: 'Failed to generate profit and loss report' });
+  }
+});
+
 export default router;
