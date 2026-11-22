@@ -30,6 +30,29 @@ AURA Restaurant OS is a cloud-native, real-time, multi-tenant hospitality operat
 4. **Soft Lifecycle Governance**: System entities (tables, menu items, staff, inventory) use an **Active / Inactive** toggle state rather than hard destructive deletes, preserving historical sales logs, tax compliance trails, and accounting integrity.
 5. **Universal Hardware Compatibility**: Responsive touch interfaces designed for Android/iOS mobile devices, kitchen wall tablets, desktop POS terminals, and 58mm/80mm thermal receipt printers via standard browser printing protocols.
 
+### 1.3 Recent Core Functional & Architectural Changes (v2.1.0 Updates)
+The following major functional improvements were recently engineered, deployed, and verified:
+1. **Single-Stage Direct Delivery for Owner Orders (`SERVED`)**:
+   - For fast counter and table operations executed by the Hotel Owner, orders bypass multi-stage kitchen delays (`PLACED` $\rightarrow$ `PREPARING` $\rightarrow$ `READY`).
+   - Items added directly by the owner are immediately stamped with status `SERVED` (Delivered to Table), reflecting instant floor service while recording financial transactions and table occupancy.
+   - Simplified the ordering drawer actions to a single prominent button: `+ Confirm & Deliver to Table` (or `+ Add & Deliver to Table` when appending dishes).
+2. **Comprehensive Thermal Receipt & KOT Print Layout**:
+   - Resolved missing pricing and financial metrics in the browser print modal (`window.print()`).
+   - Formatted itemized receipt tables with: Item Name, Quantity (`2x`), Unit Rate (`₹250.00`), Line Subtotal (`₹500.00`), Consolidated Subtotal, Tax / GST breakdown (10%), and bold Grand Total (`TOTAL BILL`).
+3. **Kitchen Inventory Management (Add Stock & 1-Click Restock)**:
+   - Implemented frontend form submission handlers `handleAddInventorySubmit` and `handleRestockSubmit`.
+   - Connected `POST /api/hotel-owner/inventory` and `PUT /api/hotel-owner/inventory/:id`.
+   - Built automatic stock level re-evaluation in PostgreSQL: updating stock quantities automatically synchronizes the item status between `IN_STOCK` and `LOW_STOCK` without manual status toggles.
+   - Synchronized response key structures (`inventory` & `items`, `stats` & flat metrics) across client and server.
+4. **Table Floor Plan: Strict Table Duplicate Prevention**:
+   - Enforced unique table number and unique table name constraints at both the database level (`UNIQUE(hotel_id, number)`) and the API layer (`DUPLICATE_TABLE_NUMBER`).
+   - Prevents duplicate tables with inline warning feedback.
+5. **Soft Lifecycle Governance (Active / Inactive)**:
+   - Replaced destructive hard `DELETE` operations across Tables, Inventory Items, Menu Dishes, Staff, and Expense Vouchers with an `Active / Inactive` status toggle.
+   - Preserves historical sales records, invoice ledgers, audit trails, and foreign key integrity.
+6. **LayBhari Multi-Tenant Context (`owner_laybhari`)**:
+   - Streamlined authentication headers (`X-Auth-Token`, `x-hotel-id`) with automatic tenant scoping for Hotel Lay Bhari (`0a4fabc0-0b95-467b-a22c-252aec59f9c7`, currency ₹ INR).
+
 ---
 
 ## 2. High-Level System Architecture
