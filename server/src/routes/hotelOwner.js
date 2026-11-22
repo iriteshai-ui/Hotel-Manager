@@ -210,7 +210,7 @@ router.post('/staff', async (req, res) => {
 });
 
 // GET /api/hotel-owner/staff/attendance - Get daily staff attendance & summary for a date
-router.get('/staff/attendance', async (req, res) => {
+const getStaffAttendanceHandler = async (req, res) => {
   try {
     const { date } = req.query;
     const data = await multiTenantDb.getStaffAttendanceByDate(req.targetHotelId, date);
@@ -219,7 +219,9 @@ router.get('/staff/attendance', async (req, res) => {
     console.error('Fetch staff attendance error:', err.message);
     res.status(500).json({ error: 'Failed to fetch staff attendance' });
   }
-});
+};
+router.get('/staff/attendance', getStaffAttendanceHandler);
+router.get('/staff-attendance', getStaffAttendanceHandler);
 
 // POST /api/hotel-owner/staff/attendance - Mark or update attendance for a staff member
 router.post('/staff/attendance', async (req, res) => {
@@ -354,7 +356,7 @@ router.patch('/hotel/status', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // GET /api/hotel-owner/dining/dashboard - Dedicated Restaurant First Dining Dashboard
-router.get('/dining/dashboard', async (req, res) => {
+const getDiningDashboardHandler = async (req, res) => {
   try {
     const data = await multiTenantDb.getDiningDashboardData(req.targetHotelId);
     res.json(data);
@@ -362,7 +364,9 @@ router.get('/dining/dashboard', async (req, res) => {
     console.error('Dining dashboard error:', err.message);
     res.status(500).json({ error: 'Failed to fetch dining dashboard data' });
   }
-});
+};
+router.get('/dining/dashboard', getDiningDashboardHandler);
+router.get('/dining-dashboard', getDiningDashboardHandler);
 
 // GET /api/hotel-owner/expenses - Get restaurant expenses
 router.get('/expenses', async (req, res) => {
@@ -471,7 +475,7 @@ router.delete('/inventory/:id', async (req, res) => {
 });
 
 // GET /api/hotel-owner/reports/profit-loss - Restaurant Profit & Loss Summary
-router.get('/reports/profit-loss', async (req, res) => {
+const getProfitLossHandler = async (req, res) => {
   try {
     const { period, startDate, endDate } = req.query;
     const report = await multiTenantDb.getProfitAndLossReport(req.targetHotelId, { period, startDate, endDate });
@@ -480,6 +484,8 @@ router.get('/reports/profit-loss', async (req, res) => {
     console.error('P&L report error:', err.message);
     res.status(500).json({ error: 'Failed to generate profit and loss report' });
   }
-});
+};
+router.get('/reports/profit-loss', getProfitLossHandler);
+router.get('/pl-report', getProfitLossHandler);
 
 export default router;

@@ -357,6 +357,64 @@ export default function HotelOwnerDashboard() {
     }
   };
 
+  // 11. Fetch Dedicated Restaurant Dining Dashboard Data
+  const fetchDiningDashboard = async () => {
+    setDiningLoading(true);
+    try {
+      const res = await fetch(getQueryUrl('/api/hotel-owner/dining/dashboard'), { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setDiningDashboardData(data);
+      }
+    } catch (e) {
+      console.error('Error loading dining dashboard:', e);
+    } finally {
+      setDiningLoading(false);
+    }
+  };
+
+  // 12. Fetch Restaurant Expenses
+  const fetchExpenses = async () => {
+    try {
+      const res = await fetch(getQueryUrl('/api/hotel-owner/expenses'), { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setExpensesList(data.expenses || []);
+        setTotalExpensesAmount(data.total || 0);
+        setExpenseCategories(data.byCategory || {});
+      }
+    } catch (e) {
+      console.error('Error loading expenses:', e);
+    }
+  };
+
+  // 13. Fetch Kitchen Inventory & Stock
+  const fetchInventory = async () => {
+    try {
+      const res = await fetch(getQueryUrl('/api/hotel-owner/inventory'), { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setInventoryList(data.items || []);
+        setInventoryStats(data.stats || { totalItems: 0, lowStockCount: 0, totalValuation: 0 });
+      }
+    } catch (e) {
+      console.error('Error loading inventory:', e);
+    }
+  };
+
+  // 14. Fetch Profit & Loss Report
+  const fetchPlReport = async (period = plPeriod) => {
+    try {
+      const res = await fetch(getQueryUrl(`/api/hotel-owner/reports/profit-loss?period=${period}`), { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setPlReportData(data);
+      }
+    } catch (e) {
+      console.error('Error loading P&L report:', e);
+    }
+  };
+
   useEffect(() => {
     fetchDashboard();
     fetchAnalytics();
@@ -368,7 +426,25 @@ export default function HotelOwnerDashboard() {
     fetchStaffAttendance(attendanceDate);
     fetchHotelTables();
     fetchHotelOrders();
+    fetchDiningDashboard();
+    fetchExpenses();
+    fetchInventory();
+    fetchPlReport();
   }, [hotelIdQuery]);
+
+  useEffect(() => {
+    if (activeTab === 'expenses') {
+      fetchExpenses();
+    } else if (activeTab === 'inventory-management') {
+      fetchInventory();
+    } else if (activeTab === 'profit-loss') {
+      fetchPlReport(plPeriod);
+    } else if (activeTab === 'dining-dashboard' || activeTab === 'overview') {
+      fetchDiningDashboard();
+      fetchHotelOrders();
+      fetchHotelTables();
+    }
+  }, [activeTab, plPeriod]);
 
   useEffect(() => {
     if (activeTab === 'staff') {

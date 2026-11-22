@@ -180,9 +180,12 @@ export const SocketProvider = ({ children }) => {
 
     const freeTable = async (tableNumber) => {
         const token = getToken();
+        const hotelId = getHotelId();
+        const headers = { 'X-Auth-Token': token };
+        if (hotelId) headers['x-hotel-id'] = hotelId;
         const res = await fetch(`/api/tables/${tableNumber}/free`, {
             method: 'PUT',
-            headers: { 'X-Auth-Token': token }
+            headers
         });
         if (res.ok) {
             const updated = await res.json();
@@ -193,10 +196,13 @@ export const SocketProvider = ({ children }) => {
 
     const addTable = async (number, capacity = 4) => {
         const token = getToken();
+        const hotelId = getHotelId();
+        const headers = { 'Content-Type': 'application/json', 'X-Auth-Token': token };
+        if (hotelId) headers['x-hotel-id'] = hotelId;
         const res = await fetch('/api/tables', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token },
-            body: JSON.stringify({ number, capacity })
+            headers,
+            body: JSON.stringify({ number, capacity, hotelId })
         });
         if (res.ok) {
             const newTable = await res.json();
@@ -210,9 +216,12 @@ export const SocketProvider = ({ children }) => {
 
     const deleteTable = async (number) => {
         const token = getToken();
+        const hotelId = getHotelId();
+        const headers = { 'X-Auth-Token': token };
+        if (hotelId) headers['x-hotel-id'] = hotelId;
         const res = await fetch(`/api/tables/${number}`, {
             method: 'DELETE',
-            headers: { 'X-Auth-Token': token }
+            headers
         });
         if (res.ok) {
             setTables(prev => prev.filter(t => t.number !== number));

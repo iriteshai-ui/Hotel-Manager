@@ -22,6 +22,22 @@ router.get('/', async (req, res) => {
   }
 });
 
+router.get('/:number', async (req, res) => {
+  try {
+    const hotelId = resolveHotelId(req);
+    const num = parseInt(req.params.number, 10);
+    const tables = await db.getTables(hotelId);
+    const table = tables.find(t => t.number === num);
+    if (!table) {
+      return res.status(404).json({ error: 'Table not found' });
+    }
+    res.json(table);
+  } catch (err) {
+    console.error('Error fetching table:', err.message);
+    res.status(500).json({ error: 'Failed to fetch table' });
+  }
+});
+
 router.post('/', async (req, res) => {
   try {
     const { number, capacity = 4 } = req.body || {};

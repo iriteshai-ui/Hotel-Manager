@@ -72,6 +72,9 @@ export default function TableOrderManagement() {
   const taxRate = hotelProfile?.tax_percentage !== undefined ? parseFloat(hotelProfile.tax_percentage) : 10;
   const hotelDisplayName = hotelProfile?.name || authHotelName || 'Hotel Lay Bhari';
 
+  const [directTables, setDirectTables] = useState([]);
+  const [directOrders, setDirectOrders] = useState([]);
+
   const showToastMsg = (text, type = 'success') => {
     setToast({ text, type });
     setTimeout(() => setToast(null), 3500);
@@ -85,6 +88,31 @@ export default function TableOrderManagement() {
     if (curHotelId) headers['x-hotel-id'] = curHotelId;
     return headers;
   };
+
+  // Direct fetch tables and orders
+  const fetchTableAndOrders = async () => {
+    try {
+      const headers = getAuthHeaders();
+      const [tRes, oRes] = await Promise.all([
+        fetch('/api/tables', { headers }),
+        fetch('/api/orders/active', { headers })
+      ]);
+      if (tRes.ok) {
+        const tData = await tRes.json();
+        if (Array.isArray(tData)) setDirectTables(tData);
+      }
+      if (oRes.ok) {
+        const oData = await oRes.json();
+        if (Array.isArray(oData)) setDirectOrders(oData);
+      }
+    } catch (e) {
+      console.warn('Error fetching tables/orders directly:', e);
+    }
+  };
+
+  useEffect(() => {
+    fetchTableAndOrders();
+  }, [currentTableNum]);
 
   // 1. Fetch hotel profile and menu items
   useEffect(() => {
@@ -123,22 +151,38 @@ export default function TableOrderManagement() {
     return () => { isMounted = false; };
   }, [effectiveSlug]);
 
+  const combinedTables = directTables.length > 0 ? directTables : tables;
+  const combinedOrders = useMemo(() => {
+    const map = new Map();
+    (directOrders || []).forEach(o => map.set(o.id, o));
+    (orders || []).forEach(o => {
+      if (map.has(o.id)) map.set(o.id, { ...map.get(o.id), ...o });
+      else map.set(o.id, o);
+    });
+    return Array.from(map.values());
+  }, [directOrders, orders]);
+
   // 2. Identify the target table and its active order
   const currentTable = useMemo(() => {
-    return tables.find(t => Number(t.number) === currentTableNum) || {
+    return combinedTables.find(t => 
+      Number(t.number) === currentTableNum && 
+      (!t.hotelId || t.hotelId === effectiveHotelId)
+    ) || combinedTables.find(t => Number(t.number) === currentTableNum) || {
       number: currentTableNum,
       capacity: 4,
       status: 'AVAILABLE'
     };
-  }, [tables, currentTableNum]);
+  }, [combinedTables, currentTableNum, effectiveHotelId]);
 
   const activeOrder = useMemo(() => {
-    return orders.find(o => 
+    return combinedOrders.find(o => 
       Number(o.tableNumber) === currentTableNum && 
+      (!o.hotelId || o.hotelId === effectiveHotelId) &&
       o.status !== 'PAID' && 
+      o.status !== 'COMPLETED' &&
       o.status !== 'CANCELLED'
     ) || null;
-  }, [orders, currentTableNum]);
+  }, [combinedOrders, currentTableNum, effectiveHotelId]);
 
   // Derive categories from actual menu items
   const categories = useMemo(() => {
@@ -251,6 +295,7 @@ export default function TableOrderManagement() {
       });
       if (res.ok) {
         showToastMsg(`Table ${currentTableNum} status set to ${newStatus}`);
+        fetchTableAndOrders();
         if (refreshData) refreshData();
       } else {
         showToastMsg('Failed to update table status', 'error');
@@ -274,6 +319,7 @@ export default function TableOrderManagement() {
       });
       if (res.ok) {
         showToastMsg(`Order marked as ${newStatus}`);
+        fetchTableAndOrders();
         if (refreshData) refreshData();
       }
     } catch {
@@ -309,6 +355,7 @@ export default function TableOrderManagement() {
           setCart([]);
           setOrderNotes('');
           showToastMsg(`Added ${cart.length} items to Table ${currentTableNum} order!`);
+          fetchTableAndOrders();
           if (refreshData) refreshData();
         } else {
           const err = await res.json().catch(() => ({}));
@@ -339,6 +386,7 @@ export default function TableOrderManagement() {
           setCart([]);
           setOrderNotes('');
           showToastMsg(`Order created for Table ${currentTableNum}! Sent to kitchen.`);
+          fetchTableAndOrders();
           if (refreshData) refreshData();
         } else {
           const err = await res.json().catch(() => ({}));
@@ -365,6 +413,7 @@ export default function TableOrderManagement() {
         if (freeTable) await freeTable(currentTableNum);
         setShowBillModal(false);
         showToastMsg(`Order #${activeOrder.id.slice(-6).toUpperCase()} settled. Table ${currentTableNum} is now Available!`);
+        fetchTableAndOrders();
         if (refreshData) refreshData();
       }
     } catch {

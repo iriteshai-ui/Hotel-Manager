@@ -364,7 +364,7 @@ export const db = {
 
   // Menu
   async getMenu() {
-    const res = await pool.query('SELECT * FROM menu_items ORDER BY CAST(id AS INTEGER) ASC;');
+    const res = await pool.query('SELECT * FROM menu_items ORDER BY is_bestseller DESC, category, name;');
     return res.rows.map(formatMenuItem);
   },
 
