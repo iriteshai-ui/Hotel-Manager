@@ -7,7 +7,7 @@ const NavBar = ({ title, statusBadge, hotel }) => {
 
   const brandInitial = hotel?.name ? hotel.name.trim().charAt(0).toUpperCase() : 'A';
   const brandName = hotel?.name ? hotel.name.toUpperCase() : 'AURA';
-  const brandSub = hotel?.name ? `${hotel.name} • Hotel & Restaurant` : 'Hotel & Restaurant OS';
+  const brandSub = hotel?.name ? `${hotel.name} • Restaurant & Dining` : 'Restaurant OS';
   const primaryColor = hotel?.theme?.primaryColor || '#D97706';
 
   const displayRole = isSuperAdmin ? 'Platform Admin' :
@@ -95,9 +95,11 @@ const NavBar = ({ title, statusBadge, hotel }) => {
             </div>
           ) : (
             <div className="flex items-center gap-3">
-              <Link to="/onboarding" className="hidden sm:inline-flex px-3 py-1.5 rounded-lg text-xs font-bold text-cream-dim hover:text-brand hover:bg-brand/10 border border-transparent hover:border-brand/20 transition-all no-underline">
-                🏨 Onboard Property
-              </Link>
+              {!hotel && (
+                <Link to="/onboarding" className="hidden sm:inline-flex px-3 py-1.5 rounded-lg text-xs font-bold text-cream-dim hover:text-brand hover:bg-brand/10 border border-transparent hover:border-brand/20 transition-all no-underline">
+                  Onboard Restaurant
+                </Link>
+              )}
               <Link to="/login" className="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest text-brand border border-brand/20 bg-brand/10 hover:bg-brand hover:text-white transition-all no-underline">
                 Staff Login
               </Link>

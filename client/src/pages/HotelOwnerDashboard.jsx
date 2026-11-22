@@ -1121,29 +1121,28 @@ export default function HotelOwnerDashboard() {
 
   const navSections = [
     {
-      heading: 'Hotel Operations',
+      heading: 'Restaurant Operations',
       items: [
-        { id: 'overview', label: 'Business Overview', icon: BarChart3, module: 'DASHBOARD' },
-        { id: 'analytics', label: 'Sales & Revenue', icon: TrendingUp, module: 'DASHBOARD' },
-        { id: 'bookings', label: 'Room Reservations', icon: CalendarCheck, module: 'BOOKINGS' },
-        { id: 'rooms', label: 'Room Inventory', icon: BedDouble, module: 'ROOMS' },
-        { id: 'customers', label: 'Hotel Guests & CRM', icon: Users, module: 'CUSTOMERS' },
+        { id: 'dining-dashboard', label: '1. Dining Dashboard', icon: LayoutDashboard, module: 'DASHBOARD' },
+        { id: 'order-management', label: '2. Order Management', icon: ChefHat, module: 'DINING_MENU' },
+        { id: 'table-management', label: '3. Table Management', icon: UtensilsCrossed, module: 'DINING_MENU' },
+        { id: 'menu-management', label: '4. Menu Management', icon: Sparkles, module: 'DINING_MENU' },
+        { id: 'sales-billing', label: '5. Sales & Billing', icon: Receipt, module: 'FINANCIALS' },
       ]
     },
     {
-      heading: 'Restaurant & Dining',
+      heading: 'Accounts & Operations',
       items: [
-        { id: 'dining-tables', label: 'Dining Tables & Floor', icon: UtensilsCrossed, module: 'DINING_MENU' },
-        { id: 'live-orders', label: 'Kitchen Orders (KDS)', icon: ChefHat, module: 'DINING_MENU' },
-        { id: 'dining-menu', label: 'Food Menu & Bestsellers', icon: Sparkles, module: 'DINING_MENU' },
+        { id: 'expenses', label: '6. Expenses', icon: CreditCard, module: 'FINANCIALS' },
+        { id: 'profit-loss', label: '7. Profit & Loss Reports', icon: BarChart3, module: 'FINANCIALS' },
+        { id: 'staff-attendance', label: '8. Staff & Attendance', icon: UserCheck, module: 'STAFF' },
+        { id: 'inventory-management', label: '9. Kitchen Inventory', icon: Package, module: 'ROOMS' },
       ]
     },
     {
-      heading: 'Operations & Admin',
+      heading: 'Secondary / Lodging',
       items: [
-        { id: 'financials', label: 'Financial Reports', icon: FileText, module: 'FINANCIALS' },
-        { id: 'staff', label: 'Staff & Operations', icon: UserCheck, module: 'STAFF' },
-        { id: 'settings', label: 'Property Settings', icon: Settings, module: 'SETTINGS' },
+        { id: 'hotel-rooms', label: '10. Hotel Room Management', icon: BedDouble, module: 'BOOKINGS' },
       ]
     }
   ];
@@ -1158,7 +1157,16 @@ export default function HotelOwnerDashboard() {
 
   useEffect(() => {
     if (flatNavItems.length > 0 && !flatNavItems.some(i => i.id === activeTab)) {
-      setActiveTab(flatNavItems[0].id);
+      const isOverview = activeTab === 'overview' && flatNavItems.some(i => i.id === 'dining-dashboard');
+      const isLiveOrders = activeTab === 'live-orders' && flatNavItems.some(i => i.id === 'order-management');
+      const isDiningTables = activeTab === 'dining-tables' && flatNavItems.some(i => i.id === 'table-management');
+      const isDiningMenu = activeTab === 'dining-menu' && flatNavItems.some(i => i.id === 'menu-management');
+      const isFinancials = activeTab === 'financials' && flatNavItems.some(i => i.id === 'sales-billing');
+      const isStaff = activeTab === 'staff' && flatNavItems.some(i => i.id === 'staff-attendance');
+      const isHotelRooms = (activeTab === 'bookings' || activeTab === 'rooms' || activeTab === 'customers') && flatNavItems.some(i => i.id === 'hotel-rooms');
+      if (!isOverview && !isLiveOrders && !isDiningTables && !isDiningMenu && !isFinancials && !isStaff && !isHotelRooms) {
+        setActiveTab(flatNavItems[0].id);
+      }
     }
   }, [flatNavItems, activeTab]);
 
@@ -1205,7 +1213,15 @@ export default function HotelOwnerDashboard() {
                 </div>
                 {section.items.map((item) => {
                   const Icon = item.icon;
-                  const isActive = activeTab === item.id;
+                  const isActive = activeTab === item.id ||
+                    (item.id === 'dining-dashboard' && activeTab === 'overview') ||
+                    (item.id === 'order-management' && activeTab === 'live-orders') ||
+                    (item.id === 'table-management' && activeTab === 'dining-tables') ||
+                    (item.id === 'menu-management' && activeTab === 'dining-menu') ||
+                    (item.id === 'sales-billing' && activeTab === 'financials') ||
+                    (item.id === 'staff-attendance' && activeTab === 'staff') ||
+                    (item.id === 'hotel-rooms' && (activeTab === 'bookings' || activeTab === 'rooms' || activeTab === 'customers'));
+
                   return (
                     <button
                       key={item.id}
@@ -1231,11 +1247,11 @@ export default function HotelOwnerDashboard() {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-xs font-black text-amber-300">
-                HO
+                RO
               </div>
               <div className="overflow-hidden">
                 <p className="text-xs font-bold text-white truncate">{username}</p>
-                <p className="text-[10px] text-slate-400 font-medium">Hotel Owner Role</p>
+                <p className="text-[10px] text-slate-400 font-medium">Restaurant Owner / Admin</p>
               </div>
             </div>
             <button
@@ -1270,40 +1286,40 @@ export default function HotelOwnerDashboard() {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-black text-[#0F172A] tracking-tight">
-                  {dashboardData?.hotel?.name || 'Hotel Management Dashboard'}
+                  {dashboardData?.hotel?.name || 'Restaurant Management Dashboard'}
                 </h2>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 uppercase font-mono">
-                  {dashboardData?.hotel?.currency || 'USD'}
+                  {dashboardData?.hotel?.currency || 'INR'}
                 </span>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 uppercase font-mono">
-                  Hotel & Restaurant OS
+                  Restaurant OS
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-medium">
-                Unified operations: Room reservations, housekeeping, dining floor, and live kitchen orders
+                Restaurant operations: Dining floor, kitchen orders, billing, expenses & menu management
               </p>
             </div>
 
             {/* Isolated Tenant Identity */}
             <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 self-start lg:self-auto">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>{dashboardData?.hotel?.name || authHotelName || 'Hotel Property'}</span>
+              <span>{dashboardData?.hotel?.name || authHotelName || 'Restaurant Property'}</span>
               <span className="text-[10px] text-slate-400 font-mono">({currencySymbol})</span>
             </div>
           </div>
 
           {/* Operational Status Badges & Quick Action Shortcuts */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
-            {/* Live Dual Badges */}
+            {/* Live Restaurant Badges - Strictly Restaurant */}
             <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs font-bold">
-                <BedDouble className="w-3.5 h-3.5 text-blue-600" />
-                <span>Hotel: {rooms.length} Rooms ({occupiedRoomsCount} Occupied)</span>
-              </div>
-
               <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold">
                 <UtensilsCrossed className="w-3.5 h-3.5 text-amber-600" />
                 <span>Restaurant: {tables.length} Tables ({occupiedTablesCount} Active)</span>
+              </div>
+
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs font-bold">
+                <ChefHat className="w-3.5 h-3.5 text-blue-600" />
+                <span>Active Orders: {displayedOrders.filter(o => o.status !== 'PAID').length} In Kitchen</span>
               </div>
 
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-xs font-mono font-medium">
@@ -1346,15 +1362,13 @@ export default function HotelOwnerDashboard() {
                 <span>Waiter POS ↗</span>
               </a>
 
-              {(isSuperAdmin || hasPermission('BOOKINGS', 'can_add')) && (
-                <button
-                  onClick={() => setShowNewBookingModal(true)}
-                  className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>New Booking</span>
-                </button>
-              )}
+              <button
+                onClick={() => handleOpenNewOrder()}
+                className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Take Table Order</span>
+              </button>
             </div>
           </div>
         </header>

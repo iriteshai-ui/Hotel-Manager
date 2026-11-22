@@ -198,7 +198,7 @@ export default function CustomerMenu() {
           </p>
           {hotel?.contactPhone && (
             <p className="text-xs text-slate-400 font-semibold mt-2">
-              Concierge / Service Desk: <span className="text-slate-700 font-mono font-bold">{hotel.contactPhone}</span>
+              Restaurant Service Desk: <span className="text-slate-700 font-mono font-bold">{hotel.contactPhone}</span>
             </p>
           )}
         </div>
