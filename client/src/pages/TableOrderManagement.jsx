@@ -468,8 +468,8 @@ export default function TableOrderManagement() {
     }
   };
 
-  // Submit Order / Append Items
-  const handleSubmitOrder = async (desiredStatus = 'PLACED') => {
+  // Submit Order / Append Items (Single-stage: direct Delivered & Active to Customer)
+  const handleSubmitOrder = async () => {
     if (cart.length === 0) {
       showToastMsg('Please add at least one item to the cart', 'error');
       return;
@@ -486,16 +486,9 @@ export default function TableOrderManagement() {
         });
 
         if (res.ok) {
-          if (desiredStatus === 'PREPARING' && activeOrder.status === 'PLACED') {
-            await fetch(`/api/orders/${activeOrder.id}/status`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-              body: JSON.stringify({ status: 'PREPARING' })
-            });
-          }
           setCart([]);
           setOrderNotes('');
-          showToastMsg(`Added ${cart.length} items to Table ${currentTableNum} order!`);
+          showToastMsg(`Added and delivered ${cart.length} items to Table ${currentTableNum}!`);
           fetchTableAndOrders();
           if (refreshData) refreshData();
         } else {
@@ -503,7 +496,7 @@ export default function TableOrderManagement() {
           showToastMsg(err.error || 'Failed to add items to order', 'error');
         }
       } else {
-        // Creating fresh order for table
+        // Creating fresh order for table directly as SERVED (Delivered to Table)
         const res = await fetch('/api/orders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
@@ -511,22 +504,15 @@ export default function TableOrderManagement() {
             tableNumber: currentTableNum,
             items: cart,
             notes: orderNotes,
-            hotelId: effectiveHotelId
+            hotelId: effectiveHotelId,
+            status: 'SERVED'
           })
         });
 
         if (res.ok) {
-          const created = await res.json();
-          if (desiredStatus === 'PREPARING' && created.id) {
-            await fetch(`/api/orders/${created.id}/status`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-              body: JSON.stringify({ status: 'PREPARING' })
-            });
-          }
           setCart([]);
           setOrderNotes('');
-          showToastMsg(`Order created for Table ${currentTableNum}! Sent to kitchen.`);
+          showToastMsg(`Order confirmed and delivered to Table ${currentTableNum}!`);
           fetchTableAndOrders();
           if (refreshData) refreshData();
         } else {
@@ -534,7 +520,7 @@ export default function TableOrderManagement() {
           showToastMsg(err.error || 'Failed to create order', 'error');
         }
       }
-    } catch (err) {
+    } catch {
       showToastMsg('Network error while processing order', 'error');
     } finally {
       setSubmitting(false);
@@ -851,28 +837,16 @@ export default function TableOrderManagement() {
               </button>
             </div>
 
-            {/* Active Order Quick Status Pill (if exists) */}
+            {/* Active Order Status Indicator (Single Stage: Delivered to Customer) */}
             {activeOrder && (
-              <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 px-3 py-1 rounded-xl">
-                <span className="text-[10px] font-black uppercase text-amber-900 tracking-wider">
+              <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-xl">
+                <span className="text-[10px] font-black uppercase text-emerald-950 tracking-wider">
                   Order #{activeOrder.id.slice(-6).toUpperCase()}:
                 </span>
-                <select
-                  value={activeOrder.status}
-                  onChange={(e) => handleUpdateOrderStatus(e.target.value)}
-                  className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border cursor-pointer focus:outline-none ${
-                    activeOrder.status === 'PLACED' ? 'bg-blue-100 text-blue-900 border-blue-300' :
-                    activeOrder.status === 'PREPARING' ? 'bg-amber-100 text-amber-900 border-amber-300' :
-                    activeOrder.status === 'SERVED' ? 'bg-emerald-100 text-emerald-900 border-emerald-300' :
-                    activeOrder.status === 'COMPLETED' ? 'bg-purple-100 text-purple-900 border-purple-300' :
-                    'bg-slate-200 text-slate-800 border-slate-300'
-                  }`}
-                >
-                  <option value="PLACED">Pending</option>
-                  <option value="PREPARING">Preparing</option>
-                  <option value="SERVED">Served</option>
-                  <option value="COMPLETED">Completed</option>
-                </select>
+                <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md bg-emerald-600 text-white flex items-center gap-1 shadow-2xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white inline-block animate-pulse"></span>
+                  <span>Delivered to Customer</span>
+                </span>
               </div>
             )}
 
@@ -1171,12 +1145,12 @@ export default function TableOrderManagement() {
                 <div className="mb-5 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-2.5">
                   <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-200">
                     <span className="font-black text-slate-800 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
-                      <ChefHat className="w-3.5 h-3.5 text-amber-600" />
-                      <span>Already Placed In Kitchen ({activeOrder.items.length})</span>
+                      <ChefHat className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Delivered Items to Customer ({activeOrder.items.length})</span>
                     </span>
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 uppercase">
-                        {activeOrder.status}
+                      <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 uppercase tracking-wider border border-emerald-200">
+                        DELIVERED
                       </span>
                     </div>
                   </div>
@@ -1359,41 +1333,28 @@ export default function TableOrderManagement() {
 
               {/* Action Buttons Matrix */}
               <div className="space-y-2 pt-2">
-                {/* 1. Primary Save / Send to Kitchen Button */}
+                {/* 1. Primary Direct Deliver to Table Button (Single-Stage Delivery) */}
                 {cart.length > 0 && (
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      disabled={submitting}
-                      onClick={() => handleSubmitOrder('PREPARING')}
-                      className="flex-1 py-3 rounded-2xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-black uppercase tracking-wider shadow-md shadow-amber-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      {submitting ? (
-                        <span>Processing...</span>
-                      ) : activeOrder ? (
-                        <>
-                          <Plus className="w-4 h-4" />
-                          <span>Append & Send to Kitchen</span>
-                        </>
-                      ) : (
-                        <>
-                          <UtensilsCrossed className="w-4 h-4" />
-                          <span>Send Order to Preparation</span>
-                        </>
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={submitting}
-                      onClick={() => handleSubmitOrder('PLACED')}
-                      className="px-4 py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                      title="Save as Pending without triggering preparation"
-                    >
-                      <Save className="w-4 h-4" />
-                      <span>Save Order</span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={handleSubmitOrder}
+                    className="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-black uppercase tracking-wider shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    {submitting ? (
+                      <span>Delivering to Table...</span>
+                    ) : activeOrder ? (
+                      <>
+                        <Plus className="w-4 h-4" />
+                        <span>+ Add & Deliver to Table</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Confirm & Deliver to Table</span>
+                      </>
+                    )}
+                  </button>
                 )}
 
                 {/* 2. Secondary Row: Settle Bill, Cancel Order & Print KOT */}

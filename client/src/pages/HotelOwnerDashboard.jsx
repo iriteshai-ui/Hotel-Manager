@@ -1951,39 +1951,15 @@ export default function HotelOwnerDashboard() {
                     <div className="flex flex-wrap items-center gap-1.5">
                       <button
                         onClick={() => setOrderMgmtStatusFilter('ACTIVE')}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                          orderMgmtStatusFilter === 'ACTIVE' ? 'bg-amber-600 text-white shadow-xs' : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+                        className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          orderMgmtStatusFilter === 'ACTIVE' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
                         }`}
                       >
-                        Active Kitchen ({activeOrdersCount})
-                      </button>
-                      <button
-                        onClick={() => setOrderMgmtStatusFilter('PLACED')}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                          orderMgmtStatusFilter === 'PLACED' ? 'bg-blue-600 text-white shadow-xs' : 'bg-blue-50 text-blue-800 hover:bg-blue-100'
-                        }`}
-                      >
-                        Placed ({placedOrdersCount})
-                      </button>
-                      <button
-                        onClick={() => setOrderMgmtStatusFilter('PREPARING')}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                          orderMgmtStatusFilter === 'PREPARING' ? 'bg-amber-600 text-white shadow-xs' : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
-                        }`}
-                      >
-                        Cooking ({preparingOrdersCount})
-                      </button>
-                      <button
-                        onClick={() => setOrderMgmtStatusFilter('SERVED')}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                          orderMgmtStatusFilter === 'SERVED' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
-                        }`}
-                      >
-                        Served ({servedOrdersCount})
+                        Active Dining ({activeOrdersCount})
                       </button>
                       <button
                         onClick={() => setOrderMgmtStatusFilter('PAID')}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                           orderMgmtStatusFilter === 'PAID' ? 'bg-slate-800 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                         }`}
                       >
@@ -1991,11 +1967,11 @@ export default function HotelOwnerDashboard() {
                       </button>
                       <button
                         onClick={() => setOrderMgmtStatusFilter('ALL')}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                           orderMgmtStatusFilter === 'ALL' ? 'bg-slate-900 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                         }`}
                       >
-                        All ({displayedOrders.length})
+                        All Orders ({displayedOrders.length})
                       </button>
                     </div>
 
@@ -2081,10 +2057,7 @@ export default function HotelOwnerDashboard() {
                         <div 
                           key={order.id} 
                           className={`bg-white rounded-2xl border shadow-xs p-5 flex flex-col justify-between hover:shadow-md transition-all ${
-                            order.status === 'PLACED' ? 'border-blue-200 bg-blue-50/10' :
-                            order.status === 'PREPARING' ? 'border-amber-300 bg-amber-50/15 ring-1 ring-amber-200' :
-                            order.status === 'SERVED' ? 'border-emerald-300 bg-emerald-50/15' :
-                            'border-slate-200'
+                            isSettled ? 'border-slate-200' : 'border-emerald-300 bg-emerald-50/15 ring-1 ring-emerald-200'
                           }`}
                         >
                           <div>
@@ -2105,15 +2078,11 @@ export default function HotelOwnerDashboard() {
                                 )}
                               </div>
                               <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                                order.status === 'PLACED' ? 'bg-blue-100 text-blue-800 border border-blue-200' :
-                                order.status === 'PREPARING' ? 'bg-amber-100 text-amber-800 border border-amber-300' :
-                                order.status === 'SERVED' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' :
-                                'bg-slate-100 text-slate-700 border border-slate-200'
+                                isSettled
+                                  ? 'bg-slate-100 text-slate-700 border border-slate-200'
+                                  : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                               }`}>
-                                {order.status === 'PLACED' ? 'Placed' :
-                                 order.status === 'PREPARING' ? '👨‍🍳 Cooking' :
-                                 order.status === 'SERVED' ? '🍽️ Served' :
-                                 '✓ Paid & Settled'}
+                                {isSettled ? '✓ Paid & Settled' : '🍽️ Delivered to Table'}
                               </span>
                             </div>
 
@@ -2147,50 +2116,34 @@ export default function HotelOwnerDashboard() {
                             </div>
 
                             <div className="flex flex-wrap items-center gap-2">
-                              {/* Status Advancement Button */}
-                              {order.status === 'PLACED' && (
-                                <button
-                                  onClick={async () => {
-                                    await handleUpdateOrderStatusAction(order.id, 'PREPARING');
-                                    showToast(`Table ${tableNum} order cooking`);
-                                  }}
-                                  className="flex-1 py-1.5 px-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all cursor-pointer text-center"
-                                >
-                                  👨‍🍳 Start Preparing
-                                </button>
-                              )}
-
-                              {order.status === 'PREPARING' && (
-                                <button
-                                  onClick={async () => {
-                                    await handleUpdateOrderStatusAction(order.id, 'SERVED');
-                                    showToast(`Table ${tableNum} order marked Served`);
-                                  }}
-                                  className="flex-1 py-1.5 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all cursor-pointer text-center"
-                                >
-                                  🍽️ Mark Served
-                                </button>
-                              )}
-
-                              {(order.status === 'SERVED' || isSettled) && (
+                              {!isSettled && (
                                 <button
                                   onClick={() => handleSettleOrder(order, tableNum)}
-                                  className="flex-1 py-1.5 px-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1"
+                                  className="flex-1 py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
                                 >
                                   <Receipt className="w-3.5 h-3.5" />
-                                  <span>{isSettled ? 'Print Receipt' : 'Settle & Print'}</span>
+                                  <span>Generate Bill & Settle</span>
                                 </button>
                               )}
 
-                              {/* Button to open dedicated table order screen to append dishes ONLY for active table orders */}
+                              {isSettled && (
+                                <button
+                                  onClick={() => handleSettleOrder(order, tableNum)}
+                                  className="flex-1 py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1"
+                                >
+                                  <Receipt className="w-3.5 h-3.5" />
+                                  <span>Print Receipt</span>
+                                </button>
+                              )}
+
                               {!isSettled && (
                                 <button
                                   onClick={() => navigate(`/tables/${tableNum}/order`)}
-                                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
-                                  title="Open full menu to add dishes"
+                                  className="px-3 py-1.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                                  title="Add dishes or manage table order"
                                 >
-                                  <Plus className="w-3 h-3 text-amber-600" />
-                                  <span>Add Dishes</span>
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>+ Add Dishes</span>
                                 </button>
                               )}
 
@@ -2950,10 +2903,7 @@ export default function HotelOwnerDashboard() {
                     onChange={e => setOrderMgmtStatusFilter(e.target.value)}
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white font-bold text-slate-700 focus:outline-none focus:border-amber-600 cursor-pointer"
                   >
-                    <option value="ACTIVE">Active Kitchen & Floor ({activeOrdersCount})</option>
-                    <option value="PLACED">Placed ({placedOrdersCount})</option>
-                    <option value="PREPARING">Preparing ({preparingOrdersCount})</option>
-                    <option value="SERVED">Served ({servedOrdersCount})</option>
+                    <option value="ACTIVE">Active & Delivered ({activeOrdersCount})</option>
                     <option value="PAID">Settled History ({completedOrdersCount})</option>
                     <option value="ALL">All Statuses ({displayedOrders.length})</option>
                   </select>
@@ -3020,12 +2970,11 @@ export default function HotelOwnerDashboard() {
                             )}
                           </div>
                           <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                            order.status === 'PLACED' ? 'bg-blue-100 text-blue-800' :
-                            order.status === 'PREPARING' ? 'bg-amber-100 text-amber-800' :
-                            order.status === 'SERVED' ? 'bg-emerald-100 text-emerald-800' :
-                            'bg-slate-100 text-slate-700 border border-slate-200'
+                            isSettled
+                              ? 'bg-slate-100 text-slate-700 border border-slate-200'
+                              : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                           }`}>
-                            {isSettled ? '✓ Paid & Settled' : order.status}
+                            {isSettled ? '✓ Paid & Settled' : '🍽️ Delivered to Table'}
                           </span>
                         </div>
 
@@ -3061,46 +3010,32 @@ export default function HotelOwnerDashboard() {
                         <div className="flex items-center gap-2">
                           {!isSettled && (
                             <button
+                              onClick={() => handleSettleOrder(order, order.tableNumber || order.table_number)}
+                              className="flex-1 py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
+                            >
+                              <Receipt className="w-3.5 h-3.5" />
+                              <span>Generate Bill & Settle</span>
+                            </button>
+                          )}
+
+                          {isSettled && (
+                            <button
+                              onClick={() => handleSettleOrder(order, order.tableNumber || order.table_number)}
+                              className="flex-1 py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1"
+                            >
+                              <Receipt className="w-3.5 h-3.5" />
+                              <span>Print Receipt</span>
+                            </button>
+                          )}
+
+                          {!isSettled && (
+                            <button
                               onClick={() => handleOpenAddItems(order, order.tableNumber || order.table_number)}
                               className="px-2.5 py-1.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
                               title="Add more items to this order"
                             >
                               <Plus className="w-3.5 h-3.5" />
                               <span>Add Items</span>
-                            </button>
-                          )}
-
-                          {order.status === 'PLACED' && (
-                            <button
-                              onClick={async () => {
-                                await handleUpdateOrderStatusAction(order.id, 'PREPARING');
-                                showToast(`Order #${order.id.slice(-6)} set to Preparing`);
-                              }}
-                              className="flex-1 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all cursor-pointer text-center"
-                            >
-                              Start Preparing
-                            </button>
-                          )}
-
-                          {order.status === 'PREPARING' && (
-                            <button
-                              onClick={async () => {
-                                await handleUpdateOrderStatusAction(order.id, 'SERVED');
-                                showToast(`Order #${order.id.slice(-6)} marked Served`);
-                              }}
-                              className="flex-1 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all cursor-pointer text-center"
-                            >
-                              Mark Served
-                            </button>
-                          )}
-
-                          {(order.status === 'SERVED' || isSettled) && (
-                            <button
-                              onClick={() => handleSettleOrder(order, order.tableNumber || order.table_number)}
-                              className="flex-1 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1"
-                            >
-                              <Receipt className="w-3.5 h-3.5" />
-                              <span>{isSettled ? 'Print Receipt' : 'Settle & Print'}</span>
                             </button>
                           )}
                         </div>

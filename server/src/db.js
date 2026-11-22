@@ -586,15 +586,16 @@ export const db = {
     return formatOrder(res.rows[0]);
   },
 
-  async placeOrder(tableNumber, items, hotelId = null) {
+  async placeOrder(tableNumber, items, hotelId = null, status = 'SERVED') {
     const num = parseInt(tableNumber, 10);
     const id = crypto.randomUUID();
     const totalPrice = (items || []).reduce((sum, item) => sum + (item.price * item.quantity), 0);
     const itemsJson = JSON.stringify(items || []);
+    const initialStatus = status || 'SERVED';
 
     const res = await pool.query(
       'INSERT INTO orders (id, table_number, items_json, total_price, status, hotel_id, timestamp) VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING *;',
-      [id, num, itemsJson, totalPrice, 'PLACED', hotelId || null]
+      [id, num, itemsJson, totalPrice, initialStatus, hotelId || null]
     );
 
     // Update table status to OCCUPIED

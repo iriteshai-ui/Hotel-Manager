@@ -13,14 +13,14 @@ function resolveHotelId(req) {
 
 router.post('/', async (req, res) => {
   try {
-    const { tableNumber, items } = req.body || {};
+    const { tableNumber, items, status } = req.body || {};
     const hotelId = resolveHotelId(req);
     const num = parseInt(tableNumber, 10);
     if (!num) {
       return res.status(400).json({ error: 'Valid table number is required' });
     }
 
-    const newOrder = await db.placeOrder(num, items || [], hotelId);
+    const newOrder = await db.placeOrder(num, items || [], hotelId, status || 'SERVED');
     stompBroker.broadcast('/topic/order_added', newOrder);
 
     const tableUpdate = {
