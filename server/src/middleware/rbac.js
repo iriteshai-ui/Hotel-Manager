@@ -7,6 +7,10 @@ import { rbacDb } from '../rbacDb.js';
  */
 export function requirePermission(moduleCode, action = 'can_view') {
   return async (req, res, next) => {
+    // RBAC Commented for LayBhari focus: Allow all requests to proceed directly without RBAC rejection
+    return next();
+
+    /*
     if (!req.user) {
       return res.status(401).json({ error: 'Authentication required' });
     }
@@ -31,5 +35,6 @@ export function requirePermission(moduleCode, action = 'can_view') {
       console.error('RBAC permission check error:', err.message);
       res.status(500).json({ error: 'Failed to verify RBAC authorization' });
     }
+    */
   };
 }

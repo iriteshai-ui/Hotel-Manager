@@ -177,19 +177,21 @@ export default function ManagerDashboard() {
     setTimeout(() => setMenuMsg(null), 3000);
   };
 
-  // Delete Hotel Menu Item
-  const handleDeleteMenuItem = async (itemId, name) => {
-    if (!window.confirm(`Delete "${name}" from ${selectedHotel?.name} menu?`)) return;
+  // Toggle Hotel Menu Item Active / Inactive (No hard delete)
+  const handleToggleMenuItemActive = async (itemId, currentActive) => {
+    const nextActive = !currentActive;
     try {
       const res = await fetch(`/api/hotels/${selectedHotel.slug}/menu/${itemId}`, {
-        method: 'DELETE'
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isAvailable: nextActive })
       });
       if (res.ok) {
-        setHotelMenuItems(prev => prev.filter(i => i.id !== itemId));
-        setMenuMsg({ type: 'success', text: `"${name}" removed from menu.` });
+        setHotelMenuItems(prev => prev.map(i => i.id === itemId ? { ...i, available: nextActive, isAvailable: nextActive, is_available: nextActive } : i));
+        setMenuMsg({ type: 'success', text: `Dish marked as ${nextActive ? 'Active' : 'Inactive'}.` });
       }
     } catch {
-      setMenuMsg({ type: 'error', text: 'Failed to delete item.' });
+      setMenuMsg({ type: 'error', text: 'Failed to update item status.' });
     }
     setTimeout(() => setMenuMsg(null), 3000);
   };
@@ -214,10 +216,22 @@ export default function ManagerDashboard() {
     setTimeout(() => setTableMsg(null), 3000);
   };
 
-  const handleDeleteTable = async (number) => {
-    if (!window.confirm(`Delete Table ${number}?`)) return;
-    await deleteTable(number);
-    setTableMsg({ type: 'success', text: `Table ${number} deleted.` });
+  const handleToggleTableStatus = async (number, currentStatus) => {
+    const nextStatus = currentStatus === 'INACTIVE' ? 'AVAILABLE' : 'INACTIVE';
+    try {
+      const res = await fetch(`/api/tables/${number}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus })
+      });
+      if (res.ok) {
+        setTableMsg({ type: 'success', text: `Table ${number} set to ${nextStatus === 'INACTIVE' ? 'Inactive' : 'Active'}.` });
+      } else {
+        setTableMsg({ type: 'error', text: 'Failed to update table status.' });
+      }
+    } catch {
+      setTableMsg({ type: 'error', text: 'Failed to update table status.' });
+    }
     setTimeout(() => setTableMsg(null), 3000);
   };
 
@@ -499,13 +513,18 @@ export default function ManagerDashboard() {
                               <span>{item.isBestseller ? 'Pinned' : 'Pin'}</span>
                             </button>
 
-                            {/* Delete Item Button */}
+                            {/* Active / Inactive Item Toggle (No delete) */}
                             <button
                               type="button"
-                              onClick={() => handleDeleteMenuItem(item.id, item.name)}
-                              className="px-2.5 py-1.5 rounded-xl bg-charcoal border border-charcoal-border text-cream-dim hover:text-rose-400 hover:border-rose-500/30 transition-all text-xs cursor-pointer"
+                              onClick={() => handleToggleMenuItemActive(item.id, item.available !== false)}
+                              className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                                item.available !== false
+                                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
+                                  : 'bg-charcoal border-charcoal-border text-cream-dim hover:bg-charcoal/80'
+                              }`}
+                              title={item.available !== false ? 'Click to set Inactive' : 'Click to set Active'}
                             >
-                              🗑️
+                              <span>{item.available !== false ? '● Active' : '○ Inactive'}</span>
                             </button>
                           </div>
                         </div>
@@ -584,9 +603,13 @@ export default function ManagerDashboard() {
                         Free Table
                       </button>
                     )}
-                    <button onClick={() => handleDeleteTable(table.number)}
-                      className="w-full py-2.5 rounded-xl text-xs font-black uppercase tracking-widest bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white transition-all cursor-pointer">
-                      Delete
+                    <button onClick={() => handleToggleTableStatus(table.number, table.status)}
+                      className={`w-full py-2.5 rounded-xl text-xs font-black uppercase tracking-widest border transition-all cursor-pointer ${
+                        table.status === 'INACTIVE'
+                          ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white'
+                          : 'bg-charcoal border-charcoal-border text-cream-dim hover:bg-amber-500/20 hover:text-amber-300'
+                      }`}>
+                      {table.status === 'INACTIVE' ? 'Activate Table' : 'Deactivate Table'}
                     </button>
                   </div>
                 );

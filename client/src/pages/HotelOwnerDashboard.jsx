@@ -8,8 +8,8 @@ import {
   Settings, FileText, CheckCircle2, XCircle, Search, Plus, ExternalLink, 
   RefreshCw, LogOut, ArrowUpRight, BarChart3, CreditCard, Shield, 
   Clock, Download, Filter, UserCheck, AlertCircle, Wrench, Sparkles, ChevronRight,
-  UtensilsCrossed, ChefHat, Receipt, Trash2, Printer, Check, Edit3,
-  Calendar, CalendarDays, ChevronLeft, UserX, X,
+  UtensilsCrossed, ChefHat, Receipt, Printer, Check, Edit3,
+  Calendar, CalendarDays, ChevronLeft, UserX, X, Power, PowerOff,
   LayoutDashboard, Package, ArrowDownRight, Layers
 } from 'lucide-react';
 
@@ -628,20 +628,23 @@ export default function HotelOwnerDashboard() {
     }
   };
 
-  const handleDeleteMenuItem = async (itemId, itemName) => {
+  const handleToggleDishActive = async (itemId, currentActive) => {
     if (!dashboardData?.hotel?.slug) return;
-    if (!window.confirm(`Delete "${itemName}" from restaurant menu?`)) return;
+    const nextActive = !currentActive;
     try {
       const res = await fetch(`/api/hotels/${dashboardData.hotel.slug}/menu/${itemId}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ isAvailable: nextActive })
       });
       if (res.ok) {
-        setHotelMenuItems(prev => prev.filter(i => i.id !== itemId));
-        showToast(`"${itemName}" deleted from menu`);
+        setHotelMenuItems(prev => prev.map(i => i.id === itemId ? { ...i, isAvailable: nextActive, is_available: nextActive } : i));
+        showToast(`Dish marked as ${nextActive ? "Active" : "Inactive"}`);
+      } else {
+        showToast("Failed to update dish status", "error");
       }
     } catch {
-      showToast('Failed to delete dish', 'error');
+      showToast("Error updating dish status", "error");
     }
   };
 
@@ -753,22 +756,82 @@ export default function HotelOwnerDashboard() {
     }
   };
 
-  const handleDeleteTableAction = async (tableNum) => {
-    if (!window.confirm(`Remove Table ${tableNum} from floor plan?`)) return;
+  const handleToggleTableActive = async (tableNum, currentStatus) => {
+    const nextStatus = currentStatus === "INACTIVE" ? "AVAILABLE" : "INACTIVE";
     try {
-      const res = await fetch(getQueryUrl(`/api/tables/${tableNum}`), {
-        method: 'DELETE',
-        headers: getAuthHeaders()
+      const res = await fetch(getQueryUrl(`/api/tables/${tableNum}/status`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ status: nextStatus, hotelId: dashboardData?.hotel?.id })
       });
       if (res.ok) {
-        showToast(`Table ${tableNum} removed from dining floor`);
+        showToast(`Table ${tableNum} is now ${nextStatus === "INACTIVE" ? "Inactive (Off-Duty)" : "Active (Available)"}`);
         fetchHotelTables();
       } else {
         const err = await res.json().catch(() => ({}));
-        showToast(err.error || 'Failed to delete table', 'error');
+        showToast(err.error || "Failed to update table status", "error");
       }
     } catch {
-      showToast('Error deleting table', 'error');
+      showToast("Error updating table status", "error");
+    }
+  };
+
+  const handleToggleStaffStatus = async (staffId, currentStatus) => {
+    const nextStatus = currentStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+    try {
+      const res = await fetch(getQueryUrl(`/api/hotel-owner/staff/${staffId}/status`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ status: nextStatus })
+      });
+      if (res.ok) {
+        showToast(`Staff member marked as ${nextStatus === "ACTIVE" ? "Active" : "Inactive"}`);
+        fetchStaff();
+        fetchStaffAttendance(attendanceDate);
+      } else {
+        showToast("Failed to update staff status", "error");
+      }
+    } catch {
+      showToast("Failed to update staff status", "error");
+    }
+  };
+
+  const handleToggleExpenseStatus = async (expId, currentStatus) => {
+    const nextStatus = currentStatus === "INACTIVE" ? "ACTIVE" : "INACTIVE";
+    try {
+      const res = await fetch(getQueryUrl(`/api/hotel-owner/expenses/${expId}/status`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ status: nextStatus })
+      });
+      if (res.ok) {
+        showToast(`Expense record marked as ${nextStatus === "ACTIVE" ? "Active" : "Inactive / Voided"}`);
+        fetchExpenses();
+        fetchDiningDashboard();
+      } else {
+        showToast("Failed to update expense status", "error");
+      }
+    } catch {
+      showToast("Failed to update expense status", "error");
+    }
+  };
+
+  const handleToggleInventoryStatus = async (itemId, currentStatus) => {
+    const nextStatus = currentStatus === "INACTIVE" ? "ACTIVE" : "INACTIVE";
+    try {
+      const res = await fetch(getQueryUrl(`/api/hotel-owner/inventory/${itemId}`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ status: nextStatus })
+      });
+      if (res.ok) {
+        showToast(`Inventory item marked as ${nextStatus === "ACTIVE" ? "Active" : "Inactive"}`);
+        fetchInventory();
+      } else {
+        showToast("Failed to update inventory status", "error");
+      }
+    } catch {
+      showToast("Failed to update inventory status", "error");
     }
   };
 
@@ -1355,11 +1418,14 @@ export default function HotelOwnerDashboard() {
     }
   ];
 
-  // Dynamically filter sidebar modules based on backend Supabase RBAC permissions
+  // RBAC Commented for LayBhari users: Unconditionally display all modules & tabs
+  const filteredNavSections = navSections;
+  /*
   const filteredNavSections = navSections.map(sec => ({
     ...sec,
     items: sec.items.filter(item => isSuperAdmin || canAccessModule(item.module))
   })).filter(sec => sec.items.length > 0);
+  */
 
   const flatNavItems = filteredNavSections.flatMap(sec => sec.items);
 
@@ -3161,19 +3227,22 @@ export default function HotelOwnerDashboard() {
                         {/* Interactive Status Selector */}
                         <div className="flex items-center gap-1.5">
                           <select
-                            value={table.status || 'AVAILABLE'}
+                            value={table.status || "AVAILABLE"}
                             onChange={(e) => handleUpdateTableStatusAction(table.number, e.target.value)}
                             className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border cursor-pointer focus:outline-none ${
-                              isOccupied
-                                ? 'bg-amber-100 text-amber-800 border-amber-300'
+                              table.status === "INACTIVE"
+                                ? "bg-slate-100 text-slate-600 border-slate-300"
+                                : isOccupied
+                                ? "bg-amber-100 text-amber-800 border-amber-300"
                                 : isReserved
-                                ? 'bg-blue-100 text-blue-800 border-blue-300'
-                                : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                ? "bg-blue-100 text-blue-800 border-blue-300"
+                                : "bg-emerald-100 text-emerald-800 border-emerald-300"
                             }`}
                           >
-                            <option value="AVAILABLE">Available</option>
-                            <option value="OCCUPIED">Occupied</option>
-                            <option value="RESERVED">Reserved</option>
+                            <option value="AVAILABLE">Active (Available)</option>
+                            <option value="OCCUPIED">Active (Occupied)</option>
+                            <option value="RESERVED">Active (Reserved)</option>
+                            <option value="INACTIVE">Inactive (Off-Duty)</option>
                           </select>
 
                           <button
@@ -3311,27 +3380,40 @@ export default function HotelOwnerDashboard() {
                         </div>
                       ) : (
                         <div className="flex items-center justify-between w-full gap-2">
-                          <button
-                            onClick={() => navigate(`/tables/${table.number}/order`)}
-                            className="flex-1 py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>Take Order</span>
-                          </button>
-                          <button
-                            onClick={() => window.open(`/tables/${table.number}/order`, '_blank')}
-                            className="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
-                            title="Open in new tab"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteTableAction(table.number)}
-                            className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition-colors cursor-pointer"
-                            title="Delete Table"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {table.status === "INACTIVE" ? (
+                            <button
+                              onClick={() => handleToggleTableActive(table.number, "INACTIVE")}
+                              className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Activate Table</span>
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => navigate(`/tables/${table.number}/order`)}
+                                className="flex-1 py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>Take Order</span>
+                              </button>
+                              <button
+                                onClick={() => window.open(`/tables/${table.number}/order`, "_blank")}
+                                className="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
+                                title="Open in new tab"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleToggleTableActive(table.number, table.status)}
+                                className="px-2.5 py-2 rounded-xl text-slate-500 hover:text-amber-800 hover:bg-amber-50 border border-slate-200 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                                title="Deactivate Table (Set Inactive)"
+                              >
+                                <Power className="w-3.5 h-3.5" />
+                                <span>Deactivate</span>
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
@@ -3499,11 +3581,16 @@ export default function HotelOwnerDashboard() {
                             </td>
                             <td className="px-4 py-3 text-right">
                               <button
-                                onClick={() => handleDeleteMenuItem(item.id, item.name)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                                title="Delete Dish"
+                                onClick={() => handleToggleDishActive(item.id, item.isAvailable !== false)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 border ${
+                                  item.isAvailable !== false
+                                    ? "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
+                                    : "bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200"
+                                }`}
+                                title={item.isAvailable !== false ? "Click to set Inactive" : "Click to set Active"}
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <span className={`w-2 h-2 rounded-full ${item.isAvailable !== false ? "bg-emerald-500" : "bg-slate-400"}`} />
+                                <span>{item.isAvailable !== false ? "Active" : "Inactive"}</span>
                               </button>
                             </td>
                           </tr>
@@ -3777,11 +3864,16 @@ export default function HotelOwnerDashboard() {
                           <td className="py-3.5 px-4 font-black text-rose-600">{currencySymbol}{parseFloat(exp.amount).toFixed(2)}</td>
                           <td className="py-3.5 px-4 text-right">
                             <button
-                              onClick={() => handleDeleteExpenseAction(exp.id)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                              title="Delete Expense"
+                              onClick={() => handleToggleExpenseStatus(exp.id, exp.status)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 border ${
+                                exp.status !== "INACTIVE"
+                                  ? "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200"
+                                  : "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300"
+                              }`}
+                              title={exp.status !== "INACTIVE" ? "Set expense inactive / voided" : "Re-activate expense"}
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <span className={`w-2 h-2 rounded-full ${exp.status !== "INACTIVE" ? "bg-emerald-500" : "bg-slate-400"}`} />
+                              <span>{exp.status !== "INACTIVE" ? "Active" : "Voided"}</span>
                             </button>
                           </td>
                         </tr>
@@ -4303,14 +4395,30 @@ export default function HotelOwnerDashboard() {
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleOpenMonthlyHistory(s)}
-                      className="w-full mt-4 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <CalendarDays className="w-3.5 h-3.5 text-amber-600" />
-                      <span>Monthly Attendance</span>
-                    </button>
+                    <div className="flex items-center gap-1.5 mt-4 pt-3 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleStaffStatus(s.id, s.status)}
+                        className={`flex-1 py-2 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 border ${
+                          s.status === "ACTIVE"
+                            ? "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200"
+                            : "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300"
+                        }`}
+                        title={s.status === "ACTIVE" ? "Set staff to Inactive" : "Activate staff"}
+                      >
+                        <Power className="w-3.5 h-3.5" />
+                        <span>{s.status === "ACTIVE" ? "Deactivate" : "Activate"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenMonthlyHistory(s)}
+                        className="py-2 px-3 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                        title="View Monthly Attendance"
+                      >
+                        <CalendarDays className="w-3.5 h-3.5 text-amber-600" />
+                        <span>History</span>
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -4435,11 +4543,16 @@ export default function HotelOwnerDashboard() {
                                 Restock
                               </button>
                               <button
-                                onClick={() => handleDeleteInventoryAction(item.id)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                                title="Delete Item"
+                                onClick={() => handleToggleInventoryStatus(item.id, item.status)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 border ${
+                                  item.status !== "INACTIVE"
+                                    ? "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200"
+                                    : "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300"
+                                }`}
+                                title={item.status !== "INACTIVE" ? "Set item inactive" : "Activate item"}
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <span className={`w-2 h-2 rounded-full ${item.status !== "INACTIVE" ? "bg-emerald-500" : "bg-slate-400"}`} />
+                                <span>{item.status !== "INACTIVE" ? "Active" : "Inactive"}</span>
                               </button>
                             </div>
                           </td>

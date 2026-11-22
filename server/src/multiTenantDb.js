@@ -978,6 +978,17 @@ export const multiTenantDb = {
     return res.rows[0];
   },
 
+  async updateHotelStaffStatus(hotelId, staffId, status) {
+    const validStatus = status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    const res = await pool.query(`
+      UPDATE hotel_staff
+      SET status = $1
+      WHERE id = $2 AND hotel_id = $3
+      RETURNING *;
+    `, [validStatus, staffId, hotelId]);
+    return res.rows[0];
+  },
+
   async getStaffAttendanceByDate(hotelId, date) {
     const formattedDate = date || new Date().toISOString().split('T')[0];
     const res = await pool.query(`
@@ -1170,10 +1181,11 @@ export const multiTenantDb = {
     const expRes = await pool.query(`
       SELECT 
         id, title, category, amount, 
+        COALESCE(status, 'ACTIVE') AS status,
         TO_CHAR(expense_date, 'YYYY-MM-DD') AS expense_date,
         payment_method, notes, created_at
       FROM restaurant_expenses
-      WHERE hotel_id = $1
+      WHERE hotel_id = $1 AND (status IS NULL OR status != 'INACTIVE')
       ORDER BY expense_date DESC, created_at DESC;
     `, [hotelId]);
 
@@ -1263,6 +1275,7 @@ export const multiTenantDb = {
   async getRestaurantExpenses(hotelId, { startDate, endDate, category } = {}) {
     let query = `
       SELECT id, hotel_id, title, category, amount, 
+             COALESCE(status, 'ACTIVE') AS status,
              TO_CHAR(expense_date, 'YYYY-MM-DD') AS expense_date, 
              payment_method, notes, created_at
       FROM restaurant_expenses
@@ -1288,10 +1301,10 @@ export const multiTenantDb = {
 
     const res = await pool.query(query, params);
     const expenses = res.rows.map(r => ({ ...r, amount: parseFloat(r.amount) || 0 }));
-    const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
+    const totalExpenses = expenses.filter(e => e.status !== 'INACTIVE').reduce((s, e) => s + e.amount, 0);
 
     const categoryMap = {};
-    expenses.forEach(e => {
+    expenses.filter(e => e.status !== 'INACTIVE').forEach(e => {
       categoryMap[e.category] = (categoryMap[e.category] || 0) + e.amount;
     });
 
@@ -1300,6 +1313,17 @@ export const multiTenantDb = {
       totalExpenses: Number(totalExpenses.toFixed(2)),
       categoryBreakdown: categoryMap
     };
+  },
+
+  async updateRestaurantExpenseStatus(hotelId, expenseId, status) {
+    const validStatus = status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    const res = await pool.query(`
+      UPDATE restaurant_expenses
+      SET status = $1
+      WHERE id = $2 AND hotel_id = $3
+      RETURNING *, TO_CHAR(expense_date, 'YYYY-MM-DD') AS expense_date;
+    `, [validStatus, expenseId, hotelId]);
+    return res.rows[0];
   },
 
   async addRestaurantExpense(hotelId, { title, category, amount, expenseDate, paymentMethod = 'CASH', notes = '' }) {

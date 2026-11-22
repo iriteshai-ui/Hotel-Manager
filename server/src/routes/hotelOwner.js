@@ -215,6 +215,19 @@ router.post('/staff', async (req, res) => {
   }
 });
 
+// PATCH /api/hotel-owner/staff/:id/status - Toggle staff Active / Inactive
+router.patch('/staff/:id/status', async (req, res) => {
+  try {
+    const { status } = req.body || {};
+    const updated = await multiTenantDb.updateHotelStaffStatus(req.targetHotelId, req.params.id, status);
+    if (!updated) return res.status(404).json({ error: 'Staff member not found' });
+    res.json(updated);
+  } catch (err) {
+    console.error('Update staff status error:', err.message);
+    res.status(500).json({ error: 'Failed to update staff status' });
+  }
+});
+
 // GET /api/hotel-owner/staff/attendance - Get daily staff attendance & summary for a date
 const getStaffAttendanceHandler = async (req, res) => {
   try {
@@ -407,6 +420,19 @@ router.post('/expenses', async (req, res) => {
   } catch (err) {
     console.error('Add expense error:', err.message);
     res.status(500).json({ error: 'Failed to record expense' });
+  }
+});
+
+// PATCH /api/hotel-owner/expenses/:id/status - Toggle expense Active / Inactive
+router.patch('/expenses/:id/status', async (req, res) => {
+  try {
+    const { status } = req.body || {};
+    const updated = await multiTenantDb.updateRestaurantExpenseStatus(req.targetHotelId, req.params.id, status);
+    if (!updated) return res.status(404).json({ error: 'Expense not found' });
+    res.json(updated);
+  } catch (err) {
+    console.error('Update expense status error:', err.message);
+    res.status(500).json({ error: 'Failed to update expense status' });
   }
 });
 

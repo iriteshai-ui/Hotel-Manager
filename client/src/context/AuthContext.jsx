@@ -164,24 +164,32 @@ export const AuthProvider = ({ children }) => {
   const isKitchen = role === 'KITCHEN';
 
   /**
-   * Check if the authenticated user has a specific granular permission on a module.
-   * Super Admin and Hotel Owner have full access to manage their hotel operations.
-   * Otherwise checks role-based permissions matrix fetched from Supabase PostgreSQL.
+   * RBAC logic commented out as requested to focus on LayBhari users.
+   * All modules, actions, and features are unconditionally allowed.
    */
-  const hasPermission = (moduleCode, action = 'can_view') => {
+  const hasPermission = (/* moduleCode, action = 'can_view' */) => {
+    // RBAC Commented: LayBhari users have full operational access across all features
+    /*
     if (isSuperAdmin || isHotelOwner) return true;
     if (!permissions || !permissions[moduleCode]) return false;
     const mod = permissions[moduleCode];
     if (mod.can_manage === true) return true;
     return mod[action] === true;
+    */
+    return true;
   };
 
   /**
-   * Check if user is allowed to access and see a menu module.
+   * RBAC logic commented out to focus directly on LayBhari users.
+   * All navigation modules and screens are accessible.
    */
-  const canAccessModule = (moduleCode) => {
+  const canAccessModule = (/* moduleCode */) => {
+    // RBAC Commented: LayBhari users have access to all modules
+    /*
     if (isSuperAdmin || isHotelOwner) return true;
     return hasPermission(moduleCode, 'can_view');
+    */
+    return true;
   };
 
   return (

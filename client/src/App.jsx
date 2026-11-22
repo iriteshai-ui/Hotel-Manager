@@ -21,6 +21,8 @@ function ProtectedRoute({ children, roles = [], module = null }) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // RBAC Commented for LayBhari focus: Allow unrestricted access to all authenticated users
+  /*
   // Super Admin has universal wildcard access
   if (isSuperAdmin) {
     return children;
@@ -42,6 +44,7 @@ function ProtectedRoute({ children, roles = [], module = null }) {
       return <Navigate to="/" replace />;
     }
   }
+  */
 
   return children;
 }
