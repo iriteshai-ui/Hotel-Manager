@@ -69,8 +69,10 @@ export const SocketProvider = ({ children }) => {
                     const newTable = JSON.parse(message.body);
                     if (!matchesCurrentTenant(newTable)) return;
                     setTables((prev) => {
-                        if (prev.find(t => t.id === newTable.id)) return prev;
-                        return [...prev, newTable].sort((a, b) => a.number - b.number);
+                        if (prev.find(t => t.id === newTable.id || Number(t.number) === Number(newTable.number))) {
+                            return prev.map(t => (t.id === newTable.id || Number(t.number) === Number(newTable.number)) ? newTable : t);
+                        }
+                        return [...prev, newTable].sort((a, b) => Number(a.number) - Number(b.number));
                     });
                 });
 
@@ -194,7 +196,7 @@ export const SocketProvider = ({ children }) => {
         return res.ok;
     };
 
-    const addTable = async (number, capacity = 4) => {
+    const addTable = async (number, capacity = 4, name = null) => {
         const token = getToken();
         const hotelId = getHotelId();
         const headers = { 'Content-Type': 'application/json', 'X-Auth-Token': token };
@@ -202,13 +204,15 @@ export const SocketProvider = ({ children }) => {
         const res = await fetch('/api/tables', {
             method: 'POST',
             headers,
-            body: JSON.stringify({ number, capacity, hotelId })
+            body: JSON.stringify({ number, capacity, name, hotelId })
         });
         if (res.ok) {
             const newTable = await res.json();
             setTables(prev => {
-                if (prev.find(t => t.id === newTable.id)) return prev;
-                return [...prev, newTable].sort((a, b) => a.number - b.number);
+                if (prev.find(t => t.id === newTable.id || Number(t.number) === Number(newTable.number))) {
+                    return prev.map(t => (t.id === newTable.id || Number(t.number) === Number(newTable.number)) ? newTable : t);
+                }
+                return [...prev, newTable].sort((a, b) => Number(a.number) - Number(b.number));
             });
         }
         return res;

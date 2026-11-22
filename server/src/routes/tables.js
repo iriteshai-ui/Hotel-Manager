@@ -40,23 +40,30 @@ router.get('/:number', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { number, capacity = 4 } = req.body || {};
+    const { number, capacity = 4, name } = req.body || {};
     const hotelId = resolveHotelId(req);
     const num = parseInt(number, 10);
     if (!num || num < 1) {
       return res.status(400).json({ error: 'Valid table number is required' });
     }
 
-    const table = await db.addTable(num, capacity, hotelId);
-    if (!table) {
-      return res.status(400).json({ error: `Table ${num} already exists in this hotel` });
-    }
+    try {
+      const table = await db.addTable(num, capacity, hotelId, name);
+      if (!table) {
+        return res.status(400).json({ error: `Table ${num} already exists in this hotel` });
+      }
 
-    stompBroker.broadcast('/topic/table_added', table);
-    res.status(201).json(table);
+      stompBroker.broadcast('/topic/table_added', table);
+      res.status(201).json(table);
+    } catch (dbErr) {
+      if (['DUPLICATE_TABLE_NUMBER', 'DUPLICATE_TABLE_NAME', 'DUPLICATE_TABLE', 'INVALID_TABLE_NUMBER', '23505'].includes(dbErr.code)) {
+        return res.status(400).json({ error: dbErr.message || `Table ${num} already exists` });
+      }
+      throw dbErr;
+    }
   } catch (err) {
     console.error('Error adding table:', err.message);
-    res.status(500).json({ error: 'Failed to add table' });
+    res.status(500).json({ error: err.message || 'Failed to add table' });
   }
 });
 

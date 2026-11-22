@@ -291,16 +291,56 @@ export const db = {
     return formatTable(res.rows[0]);
   },
 
-  async addTable(number, capacity = 4, hotelId = null) {
+  async addTable(number, capacity = 4, hotelId = null, name = null) {
     const num = parseInt(number, 10);
-    const existing = await this.getTableByNumber(num, hotelId);
-    if (existing) return null;
+    if (!num || isNaN(num) || num < 1) {
+      const err = new Error('Valid positive table number is required');
+      err.code = 'INVALID_TABLE_NUMBER';
+      throw err;
+    }
+    const tableName = (name && typeof name === 'string' && name.trim()) ? name.trim() : `Table ${num}`;
 
-    const res = await pool.query(
-      'INSERT INTO restaurant_tables (number, name, status, capacity, hotel_id) VALUES ($1, $2, $3, $4, $5) RETURNING *;',
-      [num, `Table ${num}`, 'AVAILABLE', parseInt(capacity, 10) || 4, hotelId || null]
-    );
-    return formatTable(res.rows[0]);
+    // 1. Check if table number already exists in this hotel
+    const existingNum = await this.getTableByNumber(num, hotelId);
+    if (existingNum) {
+      const err = new Error(`Table number ${num} already exists in this hotel. Duplicate table numbers are not allowed.`);
+      err.code = 'DUPLICATE_TABLE_NUMBER';
+      throw err;
+    }
+
+    // 2. Check if table name already exists in this hotel (case-insensitive)
+    let existingNameRes;
+    if (hotelId) {
+      existingNameRes = await pool.query(
+        'SELECT * FROM restaurant_tables WHERE hotel_id = $1 AND LOWER(TRIM(name)) = LOWER(TRIM($2));',
+        [hotelId, tableName]
+      );
+    } else {
+      existingNameRes = await pool.query(
+        'SELECT * FROM restaurant_tables WHERE LOWER(TRIM(name)) = LOWER(TRIM($1));',
+        [tableName]
+      );
+    }
+    if (existingNameRes.rowCount > 0) {
+      const err = new Error(`Table name "${tableName}" already exists in this hotel. Duplicate table names are not allowed.`);
+      err.code = 'DUPLICATE_TABLE_NAME';
+      throw err;
+    }
+
+    try {
+      const res = await pool.query(
+        'INSERT INTO restaurant_tables (number, name, status, capacity, hotel_id) VALUES ($1, $2, $3, $4, $5) RETURNING *;',
+        [num, tableName, 'AVAILABLE', parseInt(capacity, 10) || 4, hotelId || null]
+      );
+      return formatTable(res.rows[0]);
+    } catch (insertErr) {
+      if (insertErr.code === '23505') {
+        const err = new Error(`Table ${num} or "${tableName}" already exists in this hotel.`);
+        err.code = 'DUPLICATE_TABLE';
+        throw err;
+      }
+      throw insertErr;
+    }
   },
 
   async deleteTable(number, hotelId = null) {

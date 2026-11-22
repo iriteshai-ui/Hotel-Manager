@@ -60,7 +60,7 @@ export default function HotelOwnerDashboard() {
 
   // Orders Management Filters
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
-  const [orderMgmtStatusFilter, setOrderMgmtStatusFilter] = useState('ALL');
+  const [orderMgmtStatusFilter, setOrderMgmtStatusFilter] = useState('ACTIVE');
   const [orderTableFilter, setOrderTableFilter] = useState('ALL');
   const [orderDateFilter, setOrderDateFilter] = useState('ALL');
 
@@ -118,6 +118,7 @@ export default function HotelOwnerDashboard() {
   const [billingTableNumber, setBillingTableNumber] = useState(null);
   const [showAddTableModal, setShowAddTableModal] = useState(false);
   const [newTableNum, setNewTableNum] = useState('');
+  const [newTableName, setNewTableName] = useState('');
   const [newTableCapacity, setNewTableCapacity] = useState(4);
   const [showAddDishModal, setShowAddDishModal] = useState(false);
   const [newDishForm, setNewDishForm] = useState({
@@ -660,22 +661,37 @@ export default function HotelOwnerDashboard() {
     e.preventDefault();
     const num = parseInt(newTableNum, 10);
     const cap = parseInt(newTableCapacity, 10) || 4;
-    if (!num) return;
+    const name = (newTableName && newTableName.trim()) || `Table ${num}`;
+    if (!num || num < 1) {
+      showToast('Please enter a valid positive table number', 'error');
+      return;
+    }
+    // Strict uniqueness check on table number
+    if (displayedTables.some(t => Number(t.number) === num)) {
+      showToast(`Table number ${num} already exists! Table numbers must be unique.`, 'error');
+      return;
+    }
+    // Strict uniqueness check on table name
+    if (displayedTables.some(t => (t.name || `Table ${t.number}`).toLowerCase().trim() === name.toLowerCase())) {
+      showToast(`Table name "${name}" already exists! Duplicate table names are not allowed.`, 'error');
+      return;
+    }
     try {
       const res = await fetch(getQueryUrl('/api/tables'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify({ number: num, capacity: cap, hotelId: dashboardData?.hotel?.id })
+        body: JSON.stringify({ number: num, capacity: cap, name, hotelId: dashboardData?.hotel?.id })
       });
       if (res.ok) {
-        showToast(`Table ${num} added to dining floor!`);
+        showToast(`Table ${num} (${name}) added to dining floor!`);
         setShowAddTableModal(false);
         setNewTableNum('');
+        setNewTableName('');
         fetchHotelTables();
-        if (addTable) addTable(num, cap);
+        if (addTable) addTable(num, cap, name);
       } else {
         const err = await res.json().catch(() => ({}));
-        showToast(err.error || `Table ${num} could not be added (may already exist)`, 'error');
+        showToast(err.error || `Table ${num} could not be added (duplicate table)`, 'error');
       }
     } catch {
       showToast('Error adding table', 'error');
@@ -1162,7 +1178,19 @@ export default function HotelOwnerDashboard() {
                          dashboardData?.hotel?.currency === 'GBP' ? '£' : '$';
 
   const effectiveHotelId = isSuperAdmin ? (hotelIdQuery || authHotelId) : (authHotelId || localStorage.getItem('auth_hotel_id'));
-  const displayedTables = hotelTables.length > 0 ? hotelTables : tables;
+  const displayedTables = useMemo(() => {
+    const raw = (hotelTables && hotelTables.length > 0) ? hotelTables : tables;
+    const seen = new Set();
+    const unique = [];
+    for (const t of raw) {
+      const num = Number(t.number);
+      if (num && !seen.has(num)) {
+        seen.add(num);
+        unique.push(t);
+      }
+    }
+    return unique.sort((a, b) => Number(a.number) - Number(b.number));
+  }, [hotelTables, tables]);
   const displayedOrders = useMemo(() => {
     const map = new Map();
     (hotelOrders || []).forEach(o => map.set(o.id, o));
@@ -1814,20 +1842,12 @@ export default function HotelOwnerDashboard() {
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <button
-                        onClick={() => setOrderMgmtStatusFilter('ALL')}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                          orderMgmtStatusFilter === 'ALL' ? 'bg-slate-900 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
-                      >
-                        All ({displayedOrders.length})
-                      </button>
-                      <button
                         onClick={() => setOrderMgmtStatusFilter('ACTIVE')}
                         className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                           orderMgmtStatusFilter === 'ACTIVE' ? 'bg-amber-600 text-white shadow-xs' : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
                         }`}
                       >
-                        Active / In Kitchen ({activeOrdersCount})
+                        Active Kitchen ({activeOrdersCount})
                       </button>
                       <button
                         onClick={() => setOrderMgmtStatusFilter('PLACED')}
@@ -1843,7 +1863,7 @@ export default function HotelOwnerDashboard() {
                           orderMgmtStatusFilter === 'PREPARING' ? 'bg-amber-600 text-white shadow-xs' : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
                         }`}
                       >
-                        Preparing ({preparingOrdersCount})
+                        Cooking ({preparingOrdersCount})
                       </button>
                       <button
                         onClick={() => setOrderMgmtStatusFilter('SERVED')}
@@ -1859,7 +1879,15 @@ export default function HotelOwnerDashboard() {
                           orderMgmtStatusFilter === 'PAID' ? 'bg-slate-800 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                         }`}
                       >
-                        Completed ({completedOrdersCount})
+                        Settled History ({completedOrdersCount})
+                      </button>
+                      <button
+                        onClick={() => setOrderMgmtStatusFilter('ALL')}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          orderMgmtStatusFilter === 'ALL' ? 'bg-slate-900 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        All ({displayedOrders.length})
                       </button>
                     </div>
 
@@ -1955,21 +1983,29 @@ export default function HotelOwnerDashboard() {
                             {/* Card Header: Table + Order ID + Status */}
                             <div className="flex justify-between items-center mb-3">
                               <div className="flex items-center gap-2">
-                                <span className="px-3 py-1 rounded-xl bg-slate-900 text-white text-xs font-black">
-                                  Table {tableNum}
+                                <span className={`px-3 py-1 rounded-xl text-xs font-black ${
+                                  isSettled ? 'bg-slate-100 text-slate-800 border border-slate-300' : 'bg-slate-900 text-white'
+                                }`}>
+                                  {isSettled ? `Receipt #${order.id.slice(-6).toUpperCase()}` : `Table ${tableNum}`}
                                 </span>
-                                <span className="text-[11px] font-mono font-bold text-slate-400">#{order.id.slice(-6)}</span>
+                                {isSettled ? (
+                                  <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                                    Table {tableNum}
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] font-mono font-bold text-slate-400">#{order.id.slice(-6)}</span>
+                                )}
                               </div>
                               <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
                                 order.status === 'PLACED' ? 'bg-blue-100 text-blue-800 border border-blue-200' :
                                 order.status === 'PREPARING' ? 'bg-amber-100 text-amber-800 border border-amber-300' :
                                 order.status === 'SERVED' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' :
-                                'bg-slate-100 text-slate-700'
+                                'bg-slate-100 text-slate-700 border border-slate-200'
                               }`}>
                                 {order.status === 'PLACED' ? 'Placed' :
                                  order.status === 'PREPARING' ? '👨‍🍳 Cooking' :
                                  order.status === 'SERVED' ? '🍽️ Served' :
-                                 '✓ Paid'}
+                                 '✓ Paid & Settled'}
                               </span>
                             </div>
 
@@ -1996,7 +2032,7 @@ export default function HotelOwnerDashboard() {
                           {/* Footer with Total and Fast Action Buttons */}
                           <div className="pt-3 border-t border-slate-100 mt-2">
                             <div className="flex justify-between items-baseline mb-3">
-                              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Bill</span>
+                              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{isSettled ? 'Settled Bill' : 'Total Bill'}</span>
                               <span className="text-lg font-black text-slate-900 font-mono">
                                 {currencySymbol}{parseFloat(subtotal).toFixed(2)}
                               </span>
@@ -2034,19 +2070,21 @@ export default function HotelOwnerDashboard() {
                                   className="flex-1 py-1.5 px-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1"
                                 >
                                   <Receipt className="w-3.5 h-3.5" />
-                                  <span>{isSettled ? 'Print Bill' : 'Settle & Print'}</span>
+                                  <span>{isSettled ? 'Print Receipt' : 'Settle & Print'}</span>
                                 </button>
                               )}
 
-                              {/* Button to open dedicated table order screen to append dishes */}
-                              <button
-                                onClick={() => navigate(`/tables/${tableNum}/order`)}
-                                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
-                                title="Open full menu to add dishes"
-                              >
-                                <Plus className="w-3 h-3 text-amber-600" />
-                                <span>Add Dishes</span>
-                              </button>
+                              {/* Button to open dedicated table order screen to append dishes ONLY for active table orders */}
+                              {!isSettled && (
+                                <button
+                                  onClick={() => navigate(`/tables/${tableNum}/order`)}
+                                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                                  title="Open full menu to add dishes"
+                                >
+                                  <Plus className="w-3 h-3 text-amber-600" />
+                                  <span>Add Dishes</span>
+                                </button>
+                              )}
 
                               {/* View Receipt */}
                               <button
@@ -2804,12 +2842,12 @@ export default function HotelOwnerDashboard() {
                     onChange={e => setOrderMgmtStatusFilter(e.target.value)}
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white font-bold text-slate-700 focus:outline-none focus:border-amber-600 cursor-pointer"
                   >
+                    <option value="ACTIVE">Active Kitchen & Floor ({activeOrdersCount})</option>
+                    <option value="PLACED">Placed ({placedOrdersCount})</option>
+                    <option value="PREPARING">Preparing ({preparingOrdersCount})</option>
+                    <option value="SERVED">Served ({servedOrdersCount})</option>
+                    <option value="PAID">Settled History ({completedOrdersCount})</option>
                     <option value="ALL">All Statuses ({displayedOrders.length})</option>
-                    <option value="ACTIVE">Active (Unsettled)</option>
-                    <option value="PLACED">Placed / Pending</option>
-                    <option value="PREPARING">Preparing</option>
-                    <option value="SERVED">Served</option>
-                    <option value="PAID">Completed / Paid</option>
                   </select>
                 </div>
 
@@ -2860,18 +2898,26 @@ export default function HotelOwnerDashboard() {
                       <div>
                         <div className="flex justify-between items-center mb-3">
                           <div className="flex items-center gap-2">
-                            <span className="px-2.5 py-1 rounded-lg bg-slate-900 text-white text-xs font-black">
-                              Table {order.tableNumber || order.table_number}
+                            <span className={`px-2.5 py-1 rounded-lg text-xs font-black ${
+                              isSettled ? 'bg-slate-100 text-slate-800 border border-slate-300' : 'bg-slate-900 text-white'
+                            }`}>
+                              {isSettled ? `Receipt #${order.id.slice(-6).toUpperCase()}` : `Table ${order.tableNumber || order.table_number}`}
                             </span>
-                            <span className="text-[11px] font-mono text-slate-400">#{order.id.slice(-6)}</span>
+                            {isSettled ? (
+                              <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                                Table {order.tableNumber || order.table_number}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-mono text-slate-400">#{order.id.slice(-6)}</span>
+                            )}
                           </div>
                           <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
                             order.status === 'PLACED' ? 'bg-blue-100 text-blue-800' :
                             order.status === 'PREPARING' ? 'bg-amber-100 text-amber-800' :
                             order.status === 'SERVED' ? 'bg-emerald-100 text-emerald-800' :
-                            'bg-slate-100 text-slate-700'
+                            'bg-slate-100 text-slate-700 border border-slate-200'
                           }`}>
-                            {order.status}
+                            {isSettled ? '✓ Paid & Settled' : order.status}
                           </span>
                         </div>
 
@@ -2946,7 +2992,7 @@ export default function HotelOwnerDashboard() {
                               className="flex-1 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1"
                             >
                               <Receipt className="w-3.5 h-3.5" />
-                              <span>{isSettled ? 'Print Bill' : 'Settle & Print'}</span>
+                              <span>{isSettled ? 'Print Receipt' : 'Settle & Print'}</span>
                             </button>
                           )}
                         </div>
@@ -5310,11 +5356,40 @@ export default function HotelOwnerDashboard() {
                   type="number"
                   required
                   min="1"
-                  placeholder="e.g. 11"
+                  placeholder="e.g. 13"
                   value={newTableNum}
                   onChange={e => setNewTableNum(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                  className={`w-full px-3.5 py-2.5 rounded-xl border text-sm focus:outline-none ${
+                    newTableNum && displayedTables.some(t => Number(t.number) === parseInt(newTableNum, 10))
+                      ? 'border-rose-500 bg-rose-50 text-rose-900 focus:border-rose-600'
+                      : 'border-slate-300 focus:border-amber-600'
+                  }`}
                 />
+                {newTableNum && displayedTables.some(t => Number(t.number) === parseInt(newTableNum, 10)) && (
+                  <p className="text-[11px] font-bold text-rose-600 mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5" /> Table #{newTableNum} already exists on the floor!
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Table Name / Display Label</label>
+                <input
+                  type="text"
+                  placeholder={newTableNum ? `Table ${newTableNum}` : "e.g. Table 13, Garden 1, VIP-A"}
+                  value={newTableName}
+                  onChange={e => setNewTableName(e.target.value)}
+                  className={`w-full px-3.5 py-2.5 rounded-xl border text-sm focus:outline-none ${
+                    newTableName.trim() && displayedTables.some(t => (t.name || `Table ${t.number}`).toLowerCase() === newTableName.trim().toLowerCase())
+                      ? 'border-rose-500 bg-rose-50 text-rose-900 focus:border-rose-600'
+                      : 'border-slate-300 focus:border-amber-600'
+                  }`}
+                />
+                {newTableName.trim() && displayedTables.some(t => (t.name || `Table ${t.number}`).toLowerCase() === newTableName.trim().toLowerCase()) && (
+                  <p className="text-[11px] font-bold text-rose-600 mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5" /> Table name "{newTableName.trim()}" is already taken!
+                  </p>
+                )}
               </div>
 
               <div>
@@ -5332,7 +5407,12 @@ export default function HotelOwnerDashboard() {
 
               <button
                 type="submit"
-                className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-600/20 transition-all cursor-pointer mt-4"
+                disabled={
+                  !newTableNum ||
+                  displayedTables.some(t => Number(t.number) === parseInt(newTableNum, 10)) ||
+                  (newTableName.trim() && displayedTables.some(t => (t.name || `Table ${t.number}`).toLowerCase() === newTableName.trim().toLowerCase()))
+                }
+                className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-600/20 transition-all cursor-pointer mt-4"
               >
                 Add Table to Floor
               </button>
