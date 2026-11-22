@@ -556,19 +556,39 @@ export default function HotelOwnerDashboard() {
 
   const handleCreateStaff = async (e) => {
     e.preventDefault();
+    const name = (newStaffForm.name || "").trim();
+    if (!name) {
+      showToast("Staff name is required", "error");
+      return;
+    }
+    if (staff.some(s => s.name?.toLowerCase().trim() === name.toLowerCase())) {
+      showToast(`Staff member "${name}" already exists!`, "error");
+      return;
+    }
+    if (newStaffForm.email?.trim() && staff.some(s => s.email?.toLowerCase().trim() === newStaffForm.email.toLowerCase().trim())) {
+      showToast(`A staff member with email "${newStaffForm.email.trim()}" already exists!`, "error");
+      return;
+    }
     try {
-      const res = await fetch(getQueryUrl('/api/hotel-owner/staff'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify(newStaffForm)
+      const res = await fetch(getQueryUrl("/api/hotel-owner/staff"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ ...newStaffForm, name })
       });
       if (res.ok) {
-        showToast(`Staff member "${newStaffForm.name}" registered!`);
+        showToast(`Staff member "${name}" registered!`);
         setShowAddStaffModal(false);
+        setNewStaffForm({
+          name: "", role: "Dining Service Lead", email: "", phone: "", shift: "MORNING"
+        });
         fetchStaff();
+        fetchStaffAttendance(attendanceDate);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Failed to register staff", "error");
       }
     } catch {
-      showToast('Failed to register staff', 'error');
+      showToast("Failed to register staff", "error");
     }
   };
 
@@ -1160,15 +1180,37 @@ export default function HotelOwnerDashboard() {
     }
   };
 
+  const displayedStaff = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+    for (const s of (staff || [])) {
+      const key = (s.name || "").toLowerCase().trim();
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        list.push(s);
+      }
+    }
+    return list;
+  }, [staff]);
+
   const filteredStaffAttendance = useMemo(() => {
-    const q = (staffSearchQuery || '').toLowerCase().trim();
-    return staffAttendance.filter(item => {
-      const matchShift = staffShiftFilter === 'ALL' || (item.shift || '').toUpperCase() === staffShiftFilter;
+    const q = (staffSearchQuery || "").toLowerCase().trim();
+    const seenNames = new Set();
+    const unique = [];
+    for (const item of (staffAttendance || [])) {
+      const nameKey = (item.name || "").toLowerCase().trim();
+      if (nameKey && !seenNames.has(nameKey)) {
+        seenNames.add(nameKey);
+        unique.push(item);
+      }
+    }
+    return unique.filter(item => {
+      const matchShift = staffShiftFilter === "ALL" || (item.shift || "").toUpperCase() === staffShiftFilter;
       const matchSearch = !q || 
-        (item.name || '').toLowerCase().includes(q) || 
-        (item.role || '').toLowerCase().includes(q) ||
-        (item.email || '').toLowerCase().includes(q) ||
-        (item.phone || '').toLowerCase().includes(q);
+        (item.name || "").toLowerCase().includes(q) || 
+        (item.role || "").toLowerCase().includes(q) ||
+        (item.email || "").toLowerCase().includes(q) ||
+        (item.phone || "").toLowerCase().includes(q);
       return matchShift && matchSearch;
     });
   }, [staffAttendance, staffShiftFilter, staffSearchQuery]);
@@ -3473,304 +3515,6 @@ export default function HotelOwnerDashboard() {
             </div>
           </div>
         )}
-      </main>
-
-      {/* ── NEW BOOKING MODAL ── */}
-      {showNewBookingModal && (
-        <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowNewBookingModal(false)}>
-          <div className="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h3 className="text-xl font-black text-slate-900">Create New Guest Booking</h3>
-                <p className="text-xs text-slate-500">Record direct or walk-in reservation</p>
-              </div>
-              <button onClick={() => setShowNewBookingModal(false)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 cursor-pointer">✕</button>
-            </div>
-
-            <form onSubmit={handleCreateBooking} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Guest Full Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Lady Vivienne Ward"
-                  value={newBookingForm.guestName}
-                  onChange={e => setNewBookingForm(prev => ({ ...prev, guestName: e.target.value }))}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Email</label>
-                  <input
-                    type="email"
-                    placeholder="guest@domain.com"
-                    value={newBookingForm.guestEmail}
-                    onChange={e => setNewBookingForm(prev => ({ ...prev, guestEmail: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Phone</label>
-                  <input
-                    type="tel"
-                    placeholder="+1 555-0192"
-                    value={newBookingForm.guestPhone}
-                    onChange={e => setNewBookingForm(prev => ({ ...prev, guestPhone: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Assigned Room *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. 201"
-                    value={newBookingForm.roomNumber}
-                    onChange={e => setNewBookingForm(prev => ({ ...prev, roomNumber: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Room Category</label>
-                  <select
-                    value={newBookingForm.roomCategory}
-                    onChange={e => setNewBookingForm(prev => ({ ...prev, roomCategory: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold focus:outline-none focus:border-amber-600"
-                  >
-                    <option value="Standard Room">Standard Room</option>
-                    <option value="Deluxe Suite">Deluxe Suite</option>
-                    <option value="Executive Suite">Executive Suite</option>
-                    <option value="Presidential Penthouse">Presidential Penthouse</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Check-in Date</label>
-                  <input
-                    type="date"
-                    required
-                    value={newBookingForm.checkIn}
-                    onChange={e => setNewBookingForm(prev => ({ ...prev, checkIn: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Check-out Date</label>
-                  <input
-                    type="date"
-                    required
-                    value={newBookingForm.checkOut}
-                    onChange={e => setNewBookingForm(prev => ({ ...prev, checkOut: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Total Bill ({currencySymbol}) *</label>
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    value={newBookingForm.totalAmount}
-                    onChange={e => setNewBookingForm(prev => ({ ...prev, totalAmount: e.target.value, paidAmount: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-black focus:outline-none focus:border-amber-600"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Booking Source</label>
-                  <select
-                    value={newBookingForm.bookingSource}
-                    onChange={e => setNewBookingForm(prev => ({ ...prev, bookingSource: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold focus:outline-none focus:border-amber-600"
-                  >
-                    <option value="DIRECT">Direct Phone / Email</option>
-                    <option value="WALK_IN">Walk-in</option>
-                    <option value="WEBSITE">Brand Website</option>
-                    <option value="OTA_BOOKING">OTA Booking</option>
-                  </select>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-600/20 transition-all cursor-pointer mt-4"
-              >
-                Confirm & Record Reservation
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ── ADD ROOM MODAL ── */}
-      {showAddRoomModal && (
-        <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowAddRoomModal(false)}>
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h3 className="text-xl font-black text-slate-900">Add Room to Inventory</h3>
-                <p className="text-xs text-slate-500">Configure room number and nightly rate</p>
-              </div>
-              <button onClick={() => setShowAddRoomModal(false)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 cursor-pointer">✕</button>
-            </div>
-
-            <form onSubmit={handleCreateRoom} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Room Number *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. 501"
-                  value={newRoomForm.roomNumber}
-                  onChange={e => setNewRoomForm(prev => ({ ...prev, roomNumber: e.target.value }))}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Category</label>
-                <select
-                  value={newRoomForm.category}
-                  onChange={e => setNewRoomForm(prev => ({ ...prev, category: e.target.value }))}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold focus:outline-none focus:border-amber-600"
-                >
-                  <option value="Standard Room">Standard Room</option>
-                  <option value="Deluxe Suite">Deluxe Suite</option>
-                  <option value="Executive Suite">Executive Suite</option>
-                  <option value="Presidential Penthouse">Presidential Penthouse</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Price / Night ({currencySymbol}) *</label>
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    value={newRoomForm.pricePerNight}
-                    onChange={e => setNewRoomForm(prev => ({ ...prev, pricePerNight: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold focus:outline-none focus:border-amber-600"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Floor Level</label>
-                  <input
-                    type="number"
-                    value={newRoomForm.floor}
-                    onChange={e => setNewRoomForm(prev => ({ ...prev, floor: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Amenities (comma-separated)</label>
-                <input
-                  type="text"
-                  placeholder="Ocean View, King Bed, Wi-Fi"
-                  value={newRoomForm.amenities}
-                  onChange={e => setNewRoomForm(prev => ({ ...prev, amenities: e.target.value }))}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs focus:outline-none focus:border-amber-600"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-600/20 transition-all cursor-pointer mt-4"
-              >
-                Add Room to Active Roster
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ── ADD STAFF MODAL ── */}
-      {showAddStaffModal && (
-        <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowAddStaffModal(false)}>
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h3 className="text-xl font-black text-slate-900">Add Staff Member</h3>
-                <p className="text-xs text-slate-500">Register employee and assign operational shift</p>
-              </div>
-              <button onClick={() => setShowAddStaffModal(false)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 cursor-pointer">✕</button>
-            </div>
-
-            <form onSubmit={handleCreateStaff} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Full Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Gabriel Vance"
-                  value={newStaffForm.name}
-                  onChange={e => setNewStaffForm(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Role / Job Title</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Head Concierge"
-                  value={newStaffForm.role}
-                  onChange={e => setNewStaffForm(prev => ({ ...prev, role: e.target.value }))}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Shift</label>
-                  <select
-                    value={newStaffForm.shift}
-                    onChange={e => setNewStaffForm(prev => ({ ...prev, shift: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold focus:outline-none focus:border-amber-600"
-                  >
-                    <option value="MORNING">Morning Shift</option>
-                    <option value="EVENING">Evening Shift</option>
-                    <option value="NIGHT">Night Shift</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Contact Phone</label>
-                  <input
-                    type="tel"
-                    placeholder="+1 555-0199"
-                    value={newStaffForm.phone}
-                    onChange={e => setNewStaffForm(prev => ({ ...prev, phone: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-600/20 transition-all cursor-pointer mt-4"
-              >
-                Register Employee
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-
-
-      
         {/* ─────────────────────────────────────────────────────────── */}
         {/* TAB 5: SALES & BILLING (Settled Invoices & Daily Reports)    */}
         {/* ─────────────────────────────────────────────────────────── */}
@@ -4540,7 +4284,7 @@ export default function HotelOwnerDashboard() {
             {/* ── SUB-TAB 2: STAFF DIRECTORY ROSTER ── */}
             {staffSubTab === 'directory' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {staff.map((s) => (
+                {displayedStaff.map((s) => (
                   <div key={s.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                     <div>
                       <div className="flex justify-between items-start mb-3">
@@ -5069,6 +4813,329 @@ export default function HotelOwnerDashboard() {
             </div>
           </div>
         )}
+      </main>
+
+
+      {/* ── NEW BOOKING MODAL ── */}
+      {showNewBookingModal && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowNewBookingModal(false)}>
+          <div className="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Create New Guest Booking</h3>
+                <p className="text-xs text-slate-500">Record direct or walk-in reservation</p>
+              </div>
+              <button onClick={() => setShowNewBookingModal(false)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 cursor-pointer">✕</button>
+            </div>
+
+            <form onSubmit={handleCreateBooking} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Guest Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Lady Vivienne Ward"
+                  value={newBookingForm.guestName}
+                  onChange={e => setNewBookingForm(prev => ({ ...prev, guestName: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Email</label>
+                  <input
+                    type="email"
+                    placeholder="guest@domain.com"
+                    value={newBookingForm.guestEmail}
+                    onChange={e => setNewBookingForm(prev => ({ ...prev, guestEmail: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Phone</label>
+                  <input
+                    type="tel"
+                    placeholder="+1 555-0192"
+                    value={newBookingForm.guestPhone}
+                    onChange={e => setNewBookingForm(prev => ({ ...prev, guestPhone: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Assigned Room *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 201"
+                    value={newBookingForm.roomNumber}
+                    onChange={e => setNewBookingForm(prev => ({ ...prev, roomNumber: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Room Category</label>
+                  <select
+                    value={newBookingForm.roomCategory}
+                    onChange={e => setNewBookingForm(prev => ({ ...prev, roomCategory: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold focus:outline-none focus:border-amber-600"
+                  >
+                    <option value="Standard Room">Standard Room</option>
+                    <option value="Deluxe Suite">Deluxe Suite</option>
+                    <option value="Executive Suite">Executive Suite</option>
+                    <option value="Presidential Penthouse">Presidential Penthouse</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Check-in Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={newBookingForm.checkIn}
+                    onChange={e => setNewBookingForm(prev => ({ ...prev, checkIn: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Check-out Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={newBookingForm.checkOut}
+                    onChange={e => setNewBookingForm(prev => ({ ...prev, checkOut: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Total Bill ({currencySymbol}) *</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    value={newBookingForm.totalAmount}
+                    onChange={e => setNewBookingForm(prev => ({ ...prev, totalAmount: e.target.value, paidAmount: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-black focus:outline-none focus:border-amber-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Booking Source</label>
+                  <select
+                    value={newBookingForm.bookingSource}
+                    onChange={e => setNewBookingForm(prev => ({ ...prev, bookingSource: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold focus:outline-none focus:border-amber-600"
+                  >
+                    <option value="DIRECT">Direct Phone / Email</option>
+                    <option value="WALK_IN">Walk-in</option>
+                    <option value="WEBSITE">Brand Website</option>
+                    <option value="OTA_BOOKING">OTA Booking</option>
+                  </select>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-600/20 transition-all cursor-pointer mt-4"
+              >
+                Confirm & Record Reservation
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── ADD ROOM MODAL ── */}
+      {showAddRoomModal && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowAddRoomModal(false)}>
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Add Room to Inventory</h3>
+                <p className="text-xs text-slate-500">Configure room number and nightly rate</p>
+              </div>
+              <button onClick={() => setShowAddRoomModal(false)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 cursor-pointer">✕</button>
+            </div>
+
+            <form onSubmit={handleCreateRoom} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Room Number *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. 501"
+                  value={newRoomForm.roomNumber}
+                  onChange={e => setNewRoomForm(prev => ({ ...prev, roomNumber: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Category</label>
+                <select
+                  value={newRoomForm.category}
+                  onChange={e => setNewRoomForm(prev => ({ ...prev, category: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold focus:outline-none focus:border-amber-600"
+                >
+                  <option value="Standard Room">Standard Room</option>
+                  <option value="Deluxe Suite">Deluxe Suite</option>
+                  <option value="Executive Suite">Executive Suite</option>
+                  <option value="Presidential Penthouse">Presidential Penthouse</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Price / Night ({currencySymbol}) *</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    value={newRoomForm.pricePerNight}
+                    onChange={e => setNewRoomForm(prev => ({ ...prev, pricePerNight: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold focus:outline-none focus:border-amber-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Floor Level</label>
+                  <input
+                    type="number"
+                    value={newRoomForm.floor}
+                    onChange={e => setNewRoomForm(prev => ({ ...prev, floor: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Amenities (comma-separated)</label>
+                <input
+                  type="text"
+                  placeholder="Ocean View, King Bed, Wi-Fi"
+                  value={newRoomForm.amenities}
+                  onChange={e => setNewRoomForm(prev => ({ ...prev, amenities: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs focus:outline-none focus:border-amber-600"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-600/20 transition-all cursor-pointer mt-4"
+              >
+                Add Room to Active Roster
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── ADD STAFF MODAL ── */}
+      {showAddStaffModal && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowAddStaffModal(false)}>
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Add Staff Member</h3>
+                <p className="text-xs text-slate-500">Register employee and assign operational shift</p>
+              </div>
+              <button onClick={() => setShowAddStaffModal(false)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 cursor-pointer">✕</button>
+            </div>
+
+            <form onSubmit={handleCreateStaff} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Sachin Tendulkar"
+                  value={newStaffForm.name}
+                  onChange={e => setNewStaffForm(prev => ({ ...prev, name: e.target.value }))}
+                  className={`w-full px-3.5 py-2.5 rounded-xl border text-sm focus:outline-none ${
+                    newStaffForm.name.trim() && displayedStaff.some(s => s.name?.toLowerCase().trim() === newStaffForm.name.trim().toLowerCase())
+                      ? "border-rose-500 bg-rose-50 text-rose-900 focus:border-rose-600"
+                      : "border-slate-300 focus:border-amber-600"
+                  }`}
+                />
+                {newStaffForm.name.trim() && displayedStaff.some(s => s.name?.toLowerCase().trim() === newStaffForm.name.trim().toLowerCase()) && (
+                  <p className="text-[11px] font-bold text-rose-600 mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5" /> Staff member "${newStaffForm.name.trim()}" is already registered!
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Role / Job Title</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Floor Captain, Sous Chef, Cashier"
+                  value={newStaffForm.role}
+                  onChange={e => setNewStaffForm(prev => ({ ...prev, role: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Shift</label>
+                  <select
+                    value={newStaffForm.shift}
+                    onChange={e => setNewStaffForm(prev => ({ ...prev, shift: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold focus:outline-none focus:border-amber-600"
+                  >
+                    <option value="MORNING">Morning Shift</option>
+                    <option value="EVENING">Evening Shift</option>
+                    <option value="NIGHT">Night Shift</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Contact Phone</label>
+                  <input
+                    type="tel"
+                    placeholder="+91 98231 00112"
+                    value={newStaffForm.phone}
+                    onChange={e => setNewStaffForm(prev => ({ ...prev, phone: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Email Address</label>
+                <input
+                  type="email"
+                  placeholder="staff@hotellaybhari.com"
+                  value={newStaffForm.email}
+                  onChange={e => setNewStaffForm(prev => ({ ...prev, email: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={
+                  !newStaffForm.name.trim() ||
+                  displayedStaff.some(s => s.name?.toLowerCase().trim() === newStaffForm.name.trim().toLowerCase())
+                }
+                className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-600/20 transition-all cursor-pointer mt-4"
+              >
+                Register Employee
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+
+
+
 
         {/* ─────────────────────────────────────────────────────────── */}
         

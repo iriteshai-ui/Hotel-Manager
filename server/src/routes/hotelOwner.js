@@ -205,6 +205,12 @@ router.post('/staff', async (req, res) => {
     const staffMember = await multiTenantDb.createHotelStaff(req.targetHotelId, req.body);
     res.status(201).json(staffMember);
   } catch (err) {
+    if (err.code === 'DUPLICATE_STAFF' || err.message === 'DUPLICATE_STAFF') {
+      return res.status(400).json({ error: 'A staff member with this name or email already exists' });
+    }
+    if (err.code === 'INVALID_STAFF_NAME') {
+      return res.status(400).json({ error: err.message });
+    }
     res.status(500).json({ error: 'Failed to add staff member' });
   }
 });

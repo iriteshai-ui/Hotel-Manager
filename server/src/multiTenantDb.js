@@ -947,11 +947,34 @@ export const multiTenantDb = {
   },
 
   async createHotelStaff(hotelId, { name, role, email, phone, shift = 'MORNING' }) {
+    const trimmedName = (name || '').trim();
+    if (!trimmedName) {
+      const err = new Error('Staff name is required');
+      err.code = 'INVALID_STAFF_NAME';
+      throw err;
+    }
+    const trimmedEmail = (email || '').trim().toLowerCase();
+    const dupCheck = await pool.query(`
+      SELECT id, name FROM hotel_staff
+      WHERE hotel_id = $1 
+        AND (
+          LOWER(TRIM(name)) = LOWER($2) 
+          OR (LENGTH($3) > 0 AND LOWER(TRIM(email)) = $3)
+        )
+      LIMIT 1;
+    `, [hotelId, trimmedName, trimmedEmail]);
+
+    if (dupCheck.rows.length > 0) {
+      const err = new Error('DUPLICATE_STAFF');
+      err.code = 'DUPLICATE_STAFF';
+      throw err;
+    }
+
     const res = await pool.query(`
       INSERT INTO hotel_staff (hotel_id, name, role, email, phone, status, shift)
       VALUES ($1, $2, $3, $4, $5, 'ACTIVE', $6)
       RETURNING *;
-    `, [hotelId, name, role, email || '', phone || '', shift]);
+    `, [hotelId, trimmedName, role || 'Staff Member', trimmedEmail, (phone || '').trim(), shift]);
     return res.rows[0];
   },
 
@@ -1160,16 +1183,17 @@ export const multiTenantDb = {
     }));
 
     const todayExpensesList = allExpenses.filter(e => e.expense_date === todayStr);
-    const effectiveTodayExpenses = todayExpensesList.length > 0 ? todayExpensesList : allExpenses;
-    const totalExpenses = effectiveTodayExpenses.reduce((s, e) => s + e.amount, 0);
+    const todayExpenses = todayExpensesList.reduce((s, e) => s + e.amount, 0);
+    const totalExpenses = todayExpenses;
 
     const foodCostCategories = ['Meat & Poultry', 'Vegetables', 'Dairy', 'Raw Materials / Groceries', 'Spices & Masalas'];
-    const directFoodCosts = effectiveTodayExpenses
+    const todayDirectFoodCosts = todayExpensesList
       .filter(e => foodCostCategories.includes(e.category))
       .reduce((s, e) => s + e.amount, 0);
 
-    const grossProfit = Math.max(0, todaySales - (directFoodCosts > 0 ? directFoodCosts * 0.45 : todaySales * 0.35));
-    const netProfit = todaySales - totalExpenses;
+    const estimatedCOGS = todayDirectFoodCosts > 0 ? todayDirectFoodCosts : Math.round(todaySales * 0.35);
+    const grossProfit = Math.max(0, todaySales - estimatedCOGS);
+    const netProfit = todaySales - (todayExpenses > 0 ? todayExpenses : estimatedCOGS);
 
     // Daily Sales breakdown for last 7 days
     const dailyMap = {};
