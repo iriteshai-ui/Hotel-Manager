@@ -453,7 +453,15 @@ router.get('/inventory', async (req, res) => {
   try {
     const { category, status } = req.query;
     const data = await multiTenantDb.getRestaurantInventory(req.targetHotelId, { category, status });
-    res.json(data);
+    res.json({
+      ...data,
+      items: data.inventory,
+      stats: {
+        totalItems: data.totalItems,
+        lowStockCount: data.lowStockCount,
+        totalValuation: data.totalValuation
+      }
+    });
   } catch (err) {
     console.error('Inventory error:', err.message);
     res.status(500).json({ error: 'Failed to fetch inventory' });

@@ -1246,7 +1246,7 @@ export const multiTenantDb = {
     const invRes = await pool.query(`
       SELECT id, item_name, category, quantity, unit, min_threshold, status
       FROM restaurant_inventory
-      WHERE hotel_id = $1 AND (quantity <= min_threshold OR status = 'LOW_STOCK')
+      WHERE hotel_id = $1 AND (status IS NULL OR status != 'INACTIVE') AND (quantity <= min_threshold OR status = 'LOW_STOCK')
       ORDER BY quantity ASC
       LIMIT 5;
     `, [hotelId]);
@@ -1372,7 +1372,7 @@ export const multiTenantDb = {
       valuation: (parseFloat(i.quantity) || 0) * (parseFloat(i.cost_per_unit) || 0)
     }));
 
-    const lowStockCount = items.filter(i => i.quantity <= i.min_threshold || i.status === 'LOW_STOCK').length;
+    const lowStockCount = items.filter(i => i.status !== 'INACTIVE' && (i.quantity <= i.min_threshold || i.status === 'LOW_STOCK')).length;
     const totalValuation = items.reduce((s, i) => s + i.valuation, 0);
 
     return {
@@ -1406,6 +1406,9 @@ export const multiTenantDb = {
       fields.push(`quantity = $${idx++}`);
       params.push(q);
       fields.push(`last_restocked = NOW()`);
+      if (status === undefined) {
+        fields.push(`status = CASE WHEN status = 'INACTIVE' THEN 'INACTIVE' WHEN $${idx - 1} <= min_threshold THEN 'LOW_STOCK' ELSE 'IN_STOCK' END`);
+      }
     }
     if (minThreshold !== undefined) {
       fields.push(`min_threshold = $${idx++}`);

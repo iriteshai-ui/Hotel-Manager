@@ -395,8 +395,13 @@ export default function HotelOwnerDashboard() {
       const res = await fetch(getQueryUrl('/api/hotel-owner/inventory'), { headers: getAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
-        setInventoryList(data.items || []);
-        setInventoryStats(data.stats || { totalItems: 0, lowStockCount: 0, totalValuation: 0 });
+        const items = data.inventory || data.items || [];
+        setInventoryList(items);
+        setInventoryStats({
+          totalItems: data.totalItems ?? data.stats?.totalItems ?? items.length,
+          lowStockCount: data.lowStockCount ?? data.stats?.lowStockCount ?? 0,
+          totalValuation: data.totalValuation ?? data.stats?.totalValuation ?? 0
+        });
       }
     } catch (e) {
       console.error('Error loading inventory:', e);
@@ -832,6 +837,99 @@ export default function HotelOwnerDashboard() {
       }
     } catch {
       showToast("Failed to update inventory status", "error");
+    }
+  };
+
+  const handleAddInventorySubmit = async (e) => {
+    e.preventDefault();
+    if (!newInventoryForm.itemName || !newInventoryForm.itemName.trim()) {
+      showToast("Item name is required", "error");
+      return;
+    }
+    const quantity = parseFloat(newInventoryForm.quantity);
+    if (isNaN(quantity) || quantity < 0) {
+      showToast("Please enter a valid stock quantity", "error");
+      return;
+    }
+    const minThreshold = parseFloat(newInventoryForm.minThreshold);
+    if (isNaN(minThreshold) || minThreshold < 0) {
+      showToast("Please enter a valid minimum alert level", "error");
+      return;
+    }
+    const costPerUnit = parseFloat(newInventoryForm.costPerUnit) || 0;
+
+    try {
+      const res = await fetch(getQueryUrl('/api/hotel-owner/inventory'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({
+          itemName: newInventoryForm.itemName.trim(),
+          category: newInventoryForm.category || 'Grains & Rice',
+          quantity,
+          unit: newInventoryForm.unit || 'kg',
+          minThreshold,
+          costPerUnit
+        })
+      });
+
+      if (res.ok) {
+        showToast(`Added "${newInventoryForm.itemName.trim()}" (${quantity} ${newInventoryForm.unit || 'kg'}) to kitchen inventory!`);
+        setShowAddInventoryModal(false);
+        setNewInventoryForm({
+          itemName: '',
+          category: 'Grains & Rice',
+          quantity: '',
+          unit: 'kg',
+          minThreshold: 5,
+          costPerUnit: ''
+        });
+        fetchInventory();
+        fetchDiningDashboard();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || 'Failed to add inventory item', 'error');
+      }
+    } catch (err) {
+      console.error('Error adding inventory item:', err);
+      showToast('Error communicating with server', 'error');
+    }
+  };
+
+  const handleRestockSubmit = async (e) => {
+    e.preventDefault();
+    const addQty = parseFloat(restockAddQuantity);
+    if (isNaN(addQty) || addQty <= 0) {
+      showToast("Please enter a valid quantity to add", "error");
+      return;
+    }
+    if (!restockTargetItem || !restockTargetItem.id) {
+      showToast("No target item selected for restocking", "error");
+      return;
+    }
+    const currentQty = parseFloat(restockTargetItem.quantity) || 0;
+    const newQty = Number((currentQty + addQty).toFixed(2));
+
+    try {
+      const res = await fetch(getQueryUrl(`/api/hotel-owner/inventory/${restockTargetItem.id}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ quantity: newQty })
+      });
+
+      if (res.ok) {
+        showToast(`Restocked ${restockTargetItem.item_name || restockTargetItem.itemName}: +${addQty} ${restockTargetItem.unit} (Total: ${newQty} ${restockTargetItem.unit})`);
+        setShowRestockModal(false);
+        setRestockTargetItem(null);
+        setRestockAddQuantity('');
+        fetchInventory();
+        fetchDiningDashboard();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || 'Failed to restock item', 'error');
+      }
+    } catch (err) {
+      console.error('Error restocking item:', err);
+      showToast('Error communicating with server', 'error');
     }
   };
 
@@ -4425,8 +4523,9 @@ export default function HotelOwnerDashboard() {
                     <option value="Meat & Poultry">Meat & Poultry</option>
                     <option value="Dairy">Dairy</option>
                     <option value="Vegetables">Vegetables</option>
-                    <option value="Spices & Oils">Spices & Oils</option>
-                    <option value="Fuel & Gas">Fuel & Gas</option>
+                    <option value="Spices & Masalas">Spices & Masalas</option>
+                    <option value="Oils & Fats">Oils & Fats</option>
+                    <option value="Gas & Utilities">Gas & Utilities</option>
                   </select>
                 </div>
 
@@ -4447,53 +4546,64 @@ export default function HotelOwnerDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {inventoryList.map(item => {
-                      const isLow = item.quantity <= item.min_threshold;
-                      return (
-                        <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-3.5 px-4 font-bold text-slate-900">{item.item_name || item.itemName}</td>
-                          <td className="py-3.5 px-4 text-slate-600">{item.category}</td>
-                          <td className="py-3.5 px-4 font-black text-slate-900">
-                            {item.quantity} <span className="font-normal text-slate-500">{item.unit}</span>
-                          </td>
-                          <td className="py-3.5 px-4 text-slate-500">{item.min_threshold} {item.unit}</td>
-                          <td className="py-3.5 px-4 font-mono text-slate-700">{currencySymbol}{parseFloat(item.cost_per_unit || 0).toFixed(2)}</td>
-                          <td className="py-3.5 px-4">
-                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                              isLow ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
-                            }`}>
-                              {isLow ? 'Low Stock' : 'In Stock'}
-                            </span>
-                          </td>
-                          <td className="py-3.5 px-4 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                onClick={() => {
-                                  setRestockTargetItem(item);
-                                  setRestockAddQuantity('');
-                                  setShowRestockModal(true);
-                                }}
-                                className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold transition-all cursor-pointer"
-                              >
-                                Restock
-                              </button>
-                              <button
-                                onClick={() => handleToggleInventoryStatus(item.id, item.status)}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 border ${
-                                  item.status !== "INACTIVE"
-                                    ? "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200"
-                                    : "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300"
-                                }`}
-                                title={item.status !== "INACTIVE" ? "Set item inactive" : "Activate item"}
-                              >
-                                <span className={`w-2 h-2 rounded-full ${item.status !== "INACTIVE" ? "bg-emerald-500" : "bg-slate-400"}`} />
-                                <span>{item.status !== "INACTIVE" ? "Active" : "Inactive"}</span>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {inventoryList.filter(item => inventoryCategoryFilter === 'ALL' || item.category === inventoryCategoryFilter).length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-slate-400 font-medium">
+                          No inventory items found{inventoryCategoryFilter !== 'ALL' ? ` for category "${inventoryCategoryFilter}"` : ''}.
+                        </td>
+                      </tr>
+                    ) : (
+                      inventoryList
+                        .filter(item => inventoryCategoryFilter === 'ALL' || item.category === inventoryCategoryFilter)
+                        .map(item => {
+                          const isInactive = item.status === 'INACTIVE';
+                          const isLow = !isInactive && (parseFloat(item.quantity) <= parseFloat(item.min_threshold) || item.status === 'LOW_STOCK');
+                          return (
+                            <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="py-3.5 px-4 font-bold text-slate-900">{item.item_name || item.itemName}</td>
+                              <td className="py-3.5 px-4 text-slate-600">{item.category}</td>
+                              <td className="py-3.5 px-4 font-black text-slate-900">
+                                {item.quantity} <span className="font-normal text-slate-500">{item.unit}</span>
+                              </td>
+                              <td className="py-3.5 px-4 text-slate-500">{item.min_threshold} {item.unit}</td>
+                              <td className="py-3.5 px-4 font-mono text-slate-700">{currencySymbol}{parseFloat(item.cost_per_unit || 0).toFixed(2)}</td>
+                              <td className="py-3.5 px-4">
+                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                  isInactive ? 'bg-slate-100 text-slate-500' : isLow ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                                }`}>
+                                  {isInactive ? 'Inactive' : isLow ? 'Low Stock' : 'In Stock'}
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    onClick={() => {
+                                      setRestockTargetItem(item);
+                                      setRestockAddQuantity('');
+                                      setShowRestockModal(true);
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold transition-all cursor-pointer"
+                                  >
+                                    Restock
+                                  </button>
+                                  <button
+                                    onClick={() => handleToggleInventoryStatus(item.id, item.status)}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 border ${
+                                      item.status !== "INACTIVE"
+                                        ? "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200"
+                                        : "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300"
+                                    }`}
+                                    title={item.status !== "INACTIVE" ? "Set item inactive" : "Activate item"}
+                                  >
+                                    <span className={`w-2 h-2 rounded-full ${item.status !== "INACTIVE" ? "bg-emerald-500" : "bg-slate-400"}`} />
+                                    <span>{item.status !== "INACTIVE" ? "Active" : "Inactive"}</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -5333,8 +5443,9 @@ export default function HotelOwnerDashboard() {
                     <option value="Meat & Poultry">Meat & Poultry</option>
                     <option value="Dairy">Dairy</option>
                     <option value="Vegetables">Vegetables</option>
-                    <option value="Spices & Oils">Spices & Oils</option>
-                    <option value="Fuel & Gas">Fuel & Gas</option>
+                    <option value="Spices & Masalas">Spices & Masalas</option>
+                    <option value="Oils & Fats">Oils & Fats</option>
+                    <option value="Gas & Utilities">Gas & Utilities</option>
                   </select>
                 </div>
 
