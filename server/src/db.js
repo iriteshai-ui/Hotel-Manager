@@ -574,10 +574,10 @@ export const db = {
 
   async getActiveOrders(hotelId = null) {
     if (hotelId) {
-      const res = await pool.query('SELECT * FROM orders WHERE status != $1 AND hotel_id = $2 ORDER BY timestamp ASC;', ['PAID', hotelId]);
+      const res = await pool.query("SELECT * FROM orders WHERE status NOT IN ('PAID', 'CANCELLED', 'COMPLETED') AND hotel_id = $1 ORDER BY timestamp ASC;", [hotelId]);
       return res.rows.map(formatOrder);
     }
-    const res = await pool.query('SELECT * FROM orders WHERE status != $1 ORDER BY timestamp ASC;', ['PAID']);
+    const res = await pool.query("SELECT * FROM orders WHERE status NOT IN ('PAID', 'CANCELLED', 'COMPLETED') ORDER BY timestamp ASC;");
     return res.rows.map(formatOrder);
   },
 
@@ -607,7 +607,8 @@ export const db = {
     const normalizedStatus = status === 'Pending' || status === 'PENDING' ? 'PLACED' :
                              status === 'Preparing' ? 'PREPARING' :
                              status === 'Served' ? 'SERVED' :
-                             status === 'Completed' ? 'COMPLETED' : status;
+                             status === 'Completed' ? 'COMPLETED' :
+                             status === 'Cancelled' || status === 'CANCELLED' ? 'CANCELLED' : status;
     const res = await pool.query(
       'UPDATE orders SET status = $1 WHERE id = $2 RETURNING *;',
       [normalizedStatus, orderId]
@@ -616,11 +617,54 @@ export const db = {
 
     const order = formatOrder(res.rows[0]);
 
-    if (normalizedStatus === 'PAID') {
+    if (normalizedStatus === 'PAID' || normalizedStatus === 'CANCELLED') {
       await this.freeTable(order.tableNumber, order.hotelId);
     }
 
     return order;
+  },
+
+  async updateOrderItems(orderId, items = []) {
+    const order = await this.getOrderById(orderId);
+    if (!order) return null;
+
+    const validItems = (Array.isArray(items) ? items : [])
+      .map(item => ({
+        menuItemId: item.menuItemId || item.id || crypto.randomUUID(),
+        name: item.name,
+        category: item.category || '',
+        price: parseFloat(item.price) || 0,
+        quantity: parseInt(item.quantity, 10) || 0
+      }))
+      .filter(item => item.quantity > 0 && item.name);
+
+    const totalPrice = validItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const itemsJson = JSON.stringify(validItems);
+
+    // If user removed all items from order, cancel order and free table
+    if (validItems.length === 0) {
+      const res = await pool.query(
+        "UPDATE orders SET items_json = $1, total_price = 0, status = 'CANCELLED' WHERE id = $2 RETURNING *;",
+        [itemsJson, orderId]
+      );
+      if (res.rows[0]) {
+        const cancelledOrder = formatOrder(res.rows[0]);
+        await this.freeTable(cancelledOrder.tableNumber, cancelledOrder.hotelId);
+        return cancelledOrder;
+      }
+      return null;
+    }
+
+    const res = await pool.query(
+      'UPDATE orders SET items_json = $1, total_price = $2 WHERE id = $3 RETURNING *;',
+      [itemsJson, totalPrice, orderId]
+    );
+
+    return res.rows[0] ? formatOrder(res.rows[0]) : null;
+  },
+
+  async cancelOrder(orderId) {
+    return this.updateOrderStatus(orderId, 'CANCELLED');
   },
 
   async addItemsToOrder(orderId, newItems = []) {

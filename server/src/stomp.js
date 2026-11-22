@@ -181,14 +181,15 @@ class StompBroker {
           if (updatedOrder) {
             this.broadcast('/topic/order_updated', updatedOrder);
 
-            if (status === 'PAID') {
+            if (status === 'PAID' || status === 'CANCELLED') {
               const tableUpdate = {
                 id: `t${updatedOrder.tableNumber}`,
                 number: updatedOrder.tableNumber,
                 name: `Table ${updatedOrder.tableNumber}`,
                 status: 'AVAILABLE',
                 currentOrderId: null,
-                capacity: 4
+                capacity: 4,
+                hotelId: updatedOrder.hotelId || null
               };
               this.broadcast('/topic/table_updated', tableUpdate);
             }

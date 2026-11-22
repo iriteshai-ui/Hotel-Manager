@@ -92,7 +92,7 @@ export const SocketProvider = ({ children }) => {
                     const updatedOrder = JSON.parse(message.body);
                     if (!matchesCurrentTenant(updatedOrder)) return;
                     setOrders((prev) => {
-                        if (updatedOrder.status === 'PAID') {
+                        if (updatedOrder.status === 'PAID' || updatedOrder.status === 'CANCELLED') {
                             return prev.filter(o => o.id !== updatedOrder.id);
                         }
                         return prev.map(o => o.id === updatedOrder.id ? updatedOrder : o);
@@ -168,7 +168,7 @@ export const SocketProvider = ({ children }) => {
                 if (res.ok) {
                     const updatedOrder = await res.json();
                     setOrders((prev) => {
-                        if (updatedOrder.status === 'PAID') {
+                        if (updatedOrder.status === 'PAID' || updatedOrder.status === 'CANCELLED') {
                             return prev.filter(o => o.id !== updatedOrder.id);
                         }
                         return prev.map(o => o.id === updatedOrder.id ? updatedOrder : o);

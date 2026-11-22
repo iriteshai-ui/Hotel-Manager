@@ -95,6 +95,96 @@ router.post('/:id/items', async (req, res) => {
   }
 });
 
+// Update / Replace placed items (e.g. removing mistakenly added dishes or adjusting quantity)
+router.put('/:id/items', async (req, res) => {
+  try {
+    const { items } = req.body || {};
+    if (!items || !Array.isArray(items)) {
+      return res.status(400).json({ error: 'Valid items array is required' });
+    }
+    const updatedOrder = await db.updateOrderItems(req.params.id, items);
+    if (!updatedOrder) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    stompBroker.broadcast('/topic/order_updated', updatedOrder);
+
+    if (updatedOrder.status === 'CANCELLED') {
+      const tableUpdate = {
+        id: `t${updatedOrder.tableNumber}`,
+        number: updatedOrder.tableNumber,
+        name: `Table ${updatedOrder.tableNumber}`,
+        status: 'AVAILABLE',
+        currentOrderId: null,
+        capacity: 4,
+        hotelId: updatedOrder.hotelId
+      };
+      stompBroker.broadcast('/topic/table_updated', tableUpdate);
+    }
+
+    res.json(updatedOrder);
+  } catch (err) {
+    console.error('Error updating items in order:', err.message);
+    res.status(500).json({ error: 'Failed to update order items' });
+  }
+});
+
+// Cancel active order and free table
+router.post('/:id/cancel', async (req, res) => {
+  try {
+    const updatedOrder = await db.updateOrderStatus(req.params.id, 'CANCELLED');
+    if (!updatedOrder) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    stompBroker.broadcast('/topic/order_updated', updatedOrder);
+
+    const tableUpdate = {
+      id: `t${updatedOrder.tableNumber}`,
+      number: updatedOrder.tableNumber,
+      name: `Table ${updatedOrder.tableNumber}`,
+      status: 'AVAILABLE',
+      currentOrderId: null,
+      capacity: 4,
+      hotelId: updatedOrder.hotelId
+    };
+    stompBroker.broadcast('/topic/table_updated', tableUpdate);
+
+    res.json({ success: true, order: updatedOrder, message: 'Order cancelled and table freed' });
+  } catch (err) {
+    console.error('Error cancelling order:', err.message);
+    res.status(500).json({ error: 'Failed to cancel order' });
+  }
+});
+
+// Delete active order (removes mistakenly placed order and frees table)
+router.delete('/:id', async (req, res) => {
+  try {
+    const updatedOrder = await db.updateOrderStatus(req.params.id, 'CANCELLED');
+    if (!updatedOrder) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    stompBroker.broadcast('/topic/order_updated', updatedOrder);
+
+    const tableUpdate = {
+      id: `t${updatedOrder.tableNumber}`,
+      number: updatedOrder.tableNumber,
+      name: `Table ${updatedOrder.tableNumber}`,
+      status: 'AVAILABLE',
+      currentOrderId: null,
+      capacity: 4,
+      hotelId: updatedOrder.hotelId
+    };
+    stompBroker.broadcast('/topic/table_updated', tableUpdate);
+
+    res.json({ success: true, order: updatedOrder, message: 'Order removed and table freed' });
+  } catch (err) {
+    console.error('Error deleting order:', err.message);
+    res.status(500).json({ error: 'Failed to delete order' });
+  }
+});
+
 const handleOrderStatusUpdate = async (req, res) => {
   try {
     const { status } = req.body || {};
@@ -105,7 +195,7 @@ const handleOrderStatusUpdate = async (req, res) => {
 
     stompBroker.broadcast('/topic/order_updated', updatedOrder);
 
-    if (status === 'PAID') {
+    if (status === 'PAID' || status === 'CANCELLED') {
       const tableUpdate = {
         id: `t${updatedOrder.tableNumber}`,
         number: updatedOrder.tableNumber,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../SocketContext';
@@ -21,7 +21,10 @@ import {
   RefreshCw,
   Save,
   Check,
-  ChevronDown
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  X
 } from 'lucide-react';
 
 export default function TableOrderManagement() {
@@ -61,9 +64,15 @@ export default function TableOrderManagement() {
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
 
-  // Bill Modal State
+  // Bill & Order Actions State
   const [showBillModal, setShowBillModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancellingOrder, setCancellingOrder] = useState(false);
+  const [updatingPlacedItem, setUpdatingPlacedItem] = useState(false);
   const [tableStatusUpdating, setTableStatusUpdating] = useState(false);
+
+  // Category Slider Ref
+  const categoryScrollRef = useRef(null);
 
   // Resolved tenant details
   const effectiveSlug = authHotelSlug || 'laybhari';
@@ -324,6 +333,138 @@ export default function TableOrderManagement() {
       }
     } catch {
       showToastMsg('Failed to update order status', 'error');
+    }
+  };
+
+  // Category Horizontal Slider Controls
+  const handleScrollCategories = (direction) => {
+    if (categoryScrollRef.current) {
+      categoryScrollRef.current.scrollBy({
+        left: direction === 'left' ? -260 : 260,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  const handleCategoryWheel = (e) => {
+    if (categoryScrollRef.current && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      e.preventDefault();
+      categoryScrollRef.current.scrollLeft += e.deltaY;
+    }
+  };
+
+  const handleSelectCategory = (cat, e) => {
+    setSelectedCategory(cat);
+    if (e && e.currentTarget) {
+      e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  };
+
+  // Update quantity on already placed item in kitchen
+  const handleUpdatePlacedItemQuantity = async (itemIdx, delta) => {
+    if (!activeOrder || !activeOrder.items || !activeOrder.items[itemIdx]) return;
+    const targetItem = activeOrder.items[itemIdx];
+    const newQty = (parseInt(targetItem.quantity, 10) || 1) + delta;
+
+    let newItems;
+    if (newQty <= 0) {
+      if (!window.confirm(`Remove "${targetItem.name}" from Table ${currentTableNum} order?`)) return;
+      newItems = activeOrder.items.filter((_, idx) => idx !== itemIdx);
+    } else {
+      newItems = activeOrder.items.map((it, idx) =>
+        idx === itemIdx ? { ...it, quantity: newQty } : it
+      );
+    }
+
+    setUpdatingPlacedItem(true);
+    try {
+      const res = await fetch(`/api/orders/${activeOrder.id}/items`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ items: newItems })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        if (newItems.length === 0 || updated.status === 'CANCELLED') {
+          showToastMsg(`All items removed. Table ${currentTableNum} order cancelled and table freed.`);
+        } else {
+          showToastMsg(`Updated "${targetItem.name}" quantity to ${newQty > 0 ? newQty : 0}`);
+        }
+        fetchTableAndOrders();
+        if (refreshData) refreshData();
+      } else {
+        showToastMsg('Failed to update placed item', 'error');
+      }
+    } catch {
+      showToastMsg('Error communicating with server', 'error');
+    } finally {
+      setUpdatingPlacedItem(false);
+    }
+  };
+
+  // Remove mistakenly added dish from placed order
+  const handleRemovePlacedItem = async (itemIdx) => {
+    if (!activeOrder || !activeOrder.items || !activeOrder.items[itemIdx]) return;
+    const targetItem = activeOrder.items[itemIdx];
+    const isLastItem = activeOrder.items.length === 1;
+
+    const confirmMsg = isLastItem
+      ? `"${targetItem.name}" is the only dish on this order. Removing it will cancel the order and free Table ${currentTableNum}. Proceed?`
+      : `Remove "${targetItem.name}" from Table ${currentTableNum} order?`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    const newItems = activeOrder.items.filter((_, idx) => idx !== itemIdx);
+
+    setUpdatingPlacedItem(true);
+    try {
+      const res = await fetch(`/api/orders/${activeOrder.id}/items`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ items: newItems })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        if (newItems.length === 0 || updated.status === 'CANCELLED') {
+          showToastMsg(`Order cancelled and Table ${currentTableNum} is now Available.`);
+        } else {
+          showToastMsg(`Removed "${targetItem.name}" from order.`);
+        }
+        fetchTableAndOrders();
+        if (refreshData) refreshData();
+      } else {
+        showToastMsg('Failed to remove item', 'error');
+      }
+    } catch {
+      showToastMsg('Error communicating with server', 'error');
+    } finally {
+      setUpdatingPlacedItem(false);
+    }
+  };
+
+  // Cancel entire active order mistakenly created
+  const handleCancelActiveOrder = async () => {
+    if (!activeOrder) return;
+    setCancellingOrder(true);
+    try {
+      const res = await fetch(`/api/orders/${activeOrder.id}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }
+      });
+      if (res.ok) {
+        showToastMsg(`Order #${activeOrder.id.slice(-6).toUpperCase()} cancelled. Table ${currentTableNum} is now Available.`);
+        setShowCancelModal(false);
+        setCart([]);
+        setOrderNotes('');
+        fetchTableAndOrders();
+        if (refreshData) refreshData();
+      } else {
+        showToastMsg('Failed to cancel order', 'error');
+      }
+    } catch {
+      showToastMsg('Error cancelling order', 'error');
+    } finally {
+      setCancellingOrder(false);
     }
   };
 
@@ -698,37 +839,63 @@ export default function TableOrderManagement() {
               </div>
             </div>
 
-            {/* Category Scroll Bar */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
-              {categories.map((cat) => {
-                const isSelected = selectedCategory === cat;
-                const count = cat === 'ALL'
-                  ? menuItems.length
-                  : cat === 'BESTSELLERS'
-                  ? menuItems.filter(i => i.isBestseller).length
-                  : menuItems.filter(i => i.category === cat).length;
+            {/* Category Scroll Bar with Left & Right Slide Controls */}
+            <div className="relative flex items-center gap-1.5 pt-1">
+              <button
+                type="button"
+                onClick={() => handleScrollCategories('left')}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 flex items-center justify-center shrink-0 cursor-pointer transition-colors shadow-2xs"
+                title="Slide categories left"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
 
-                return (
-                  <button
-                    key={cat}
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer border ${
-                      isSelected
-                        ? 'bg-slate-900 border-slate-900 text-white shadow-xs'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                    }`}
-                  >
-                    {cat === 'BESTSELLERS' ? '⭐ Bestsellers' : cat}
-                    <span className={`ml-1.5 text-[10px] opacity-70`}>({count})</span>
-                  </button>
-                );
-              })}
+              <div
+                ref={categoryScrollRef}
+                onWheel={handleCategoryWheel}
+                className="flex-1 flex items-center gap-1.5 overflow-x-auto py-1 text-xs scroll-smooth scrollbar-thin scrollbar-thumb-slate-300"
+                style={{ scrollbarWidth: 'thin' }}
+              >
+                {categories.map((cat) => {
+                  const isSelected = selectedCategory === cat;
+                  const count = cat === 'ALL'
+                    ? menuItems.length
+                    : cat === 'BESTSELLERS'
+                    ? menuItems.filter(i => i.isBestseller).length
+                    : menuItems.filter(i => i.category === cat).length;
+
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={(e) => handleSelectCategory(cat, e)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer border shrink-0 ${
+                        isSelected
+                          ? 'bg-slate-900 border-slate-900 text-white shadow-xs'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                      }`}
+                    >
+                      {cat === 'BESTSELLERS' ? '⭐ Bestsellers' : cat}
+                      <span className="ml-1.5 text-[10px] opacity-70">({count})</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleScrollCategories('right')}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 flex items-center justify-center shrink-0 cursor-pointer transition-colors shadow-2xs"
+                title="Slide categories right"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
           {/* Dishes List / Grid */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex-1">
-            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex-1 flex flex-col min-h-0">
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100 shrink-0">
               <span className="text-xs font-black uppercase tracking-wider text-slate-500">
                 Menu Items ({filteredDishes.length})
               </span>
@@ -748,7 +915,7 @@ export default function TableOrderManagement() {
                 No dishes found matching your search.
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[calc(100vh-320px)] min-h-[420px] overflow-y-auto pr-2 pb-24 scrollbar-thin scrollbar-thumb-slate-300 hover:scrollbar-thumb-slate-400">
                 {filteredDishes.map((dish) => {
                   const inCart = cart.find(i => (i.menuItemId || i.id) === dish.id);
                   const qtyInCart = inCart ? inCart.quantity : 0;
@@ -869,39 +1036,97 @@ export default function TableOrderManagement() {
                   </p>
                 </div>
 
-                {cart.length > 0 && (
-                  <button
-                    onClick={() => setCart([])}
-                    className="text-[11px] font-bold text-rose-600 hover:underline cursor-pointer"
-                  >
-                    Clear New Items
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {cart.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setCart([])}
+                      className="text-[11px] font-bold text-rose-600 hover:underline cursor-pointer"
+                    >
+                      Clear New Items
+                    </button>
+                  )}
+                  {activeOrder && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCancelModal(true)}
+                      className="px-2.5 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                      title="Cancel mistakenly created order and free table"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Remove Order</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* 1. Existing Active Order Items (Already Placed) */}
               {activeOrder && activeOrder.items && activeOrder.items.length > 0 && (
-                <div className="mb-5 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-2">
+                <div className="mb-5 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-2.5">
                   <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-200">
                     <span className="font-black text-slate-800 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
                       <ChefHat className="w-3.5 h-3.5 text-amber-600" />
                       <span>Already Placed In Kitchen ({activeOrder.items.length})</span>
                     </span>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 uppercase">
-                      {activeOrder.status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 uppercase">
+                        {activeOrder.status}
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                     {activeOrder.items.map((item, idx) => (
-                      <div key={idx} className="flex items-center justify-between text-xs text-slate-700">
-                        <span className="font-bold truncate mr-2">
-                          <span className="text-amber-800 font-black mr-1.5">{item.quantity}×</span>
-                          {item.name}
-                        </span>
-                        <span className="font-mono text-xs font-semibold text-slate-600 shrink-0">
-                          {currencySymbol}{((parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 1)).toFixed(2)}
-                        </span>
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-200/90 text-xs shadow-2xs hover:border-slate-300 transition-all"
+                      >
+                        <div className="min-w-0 pr-2">
+                          <h5 className="font-bold text-slate-900 truncate">{item.name}</h5>
+                          <span className="text-[10px] text-slate-400 font-medium">
+                            {currencySymbol}{parseFloat(item.price).toFixed(2)} each
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="flex items-center gap-1 bg-slate-50 rounded-lg p-0.5 border border-slate-200">
+                            <button
+                              type="button"
+                              disabled={updatingPlacedItem}
+                              onClick={() => handleUpdatePlacedItemQuantity(idx, -1)}
+                              className="w-5 h-5 rounded bg-white hover:bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-700 cursor-pointer shadow-2xs disabled:opacity-50"
+                              title="Decrease quantity or remove"
+                            >
+                              −
+                            </button>
+                            <span className="text-xs font-black px-1.5 text-slate-900 min-w-4 text-center">
+                              {item.quantity}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={updatingPlacedItem}
+                              onClick={() => handleUpdatePlacedItemQuantity(idx, 1)}
+                              className="w-5 h-5 rounded bg-white hover:bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-700 cursor-pointer shadow-2xs disabled:opacity-50"
+                              title="Increase quantity"
+                            >
+                              +
+                            </button>
+                          </div>
+
+                          <span className="font-black text-slate-900 w-16 text-right font-mono text-xs">
+                            {currencySymbol}{((parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 1)).toFixed(2)}
+                          </span>
+
+                          <button
+                            type="button"
+                            disabled={updatingPlacedItem}
+                            onClick={() => handleRemovePlacedItem(idx)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                            title="Remove this dish from table order"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1065,8 +1290,8 @@ export default function TableOrderManagement() {
                   </div>
                 )}
 
-                {/* 2. Secondary Row: Settle Bill & Print KOT */}
-                <div className="flex items-center gap-2">
+                {/* 2. Secondary Row: Settle Bill, Cancel Order & Print KOT */}
+                <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                   {activeOrder && (
                     <button
                       type="button"
@@ -1078,10 +1303,22 @@ export default function TableOrderManagement() {
                     </button>
                   )}
 
+                  {activeOrder && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCancelModal(true)}
+                      className="py-2.5 px-3 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                      title="Cancel mistakenly created order and free table"
+                    >
+                      <Trash2 className="w-4 h-4 text-rose-600" />
+                      <span>Cancel Order</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={handlePrintKOT}
-                    className="py-2.5 px-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="py-2.5 px-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
                     title="Print Kitchen Order Ticket"
                   >
                     <Printer className="w-4 h-4" />
@@ -1103,6 +1340,59 @@ export default function TableOrderManagement() {
           </div>
         </section>
       </main>
+
+      {/* ── CANCEL / REMOVE MISTAKEN ORDER CONFIRMATION MODAL ── */}
+      {showCancelModal && activeOrder && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 animate-scale-in">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-2xl bg-rose-100 flex items-center justify-center text-rose-600 shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900">
+                  Cancel Table {currentTableNum} Order?
+                </h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  Order #{activeOrder.id.slice(-6).toUpperCase()} ({activeOrder.items?.length || 0} items)
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed mb-6">
+              If this order was placed mistakenly, canceling it will void the order and release 
+              <span className="font-bold text-slate-900"> Table {currentTableNum} </span> 
+              back to Available status immediately.
+            </p>
+
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                disabled={cancellingOrder}
+                onClick={() => setShowCancelModal(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
+              >
+                No, Keep Order
+              </button>
+              <button
+                type="button"
+                disabled={cancellingOrder}
+                onClick={handleCancelActiveOrder}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-rose-600/20"
+              >
+                {cancellingOrder ? (
+                  <span>Cancelling...</span>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Yes, Cancel Order</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── BILL MODAL FOR PRINTING & SETTLEMENT ── */}
       {showBillModal && activeOrder && (

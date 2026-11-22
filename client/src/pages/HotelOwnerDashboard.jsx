@@ -1338,7 +1338,7 @@ export default function HotelOwnerDashboard() {
   const availableTablesCount = displayedTables.filter(t => t.status === 'AVAILABLE' || (!t.status && t.status !== 'OCCUPIED' && t.status !== 'RESERVED')).length;
   const reservedTablesCount = displayedTables.filter(t => t.status === 'RESERVED').length;
 
-  const activeOrdersCount = displayedOrders.filter(o => o.status !== 'PAID' && o.status !== 'COMPLETED').length;
+  const activeOrdersCount = displayedOrders.filter(o => o.status !== 'PAID' && o.status !== 'COMPLETED' && o.status !== 'CANCELLED').length;
   const placedOrdersCount = displayedOrders.filter(o => o.status === 'PLACED').length;
   const preparingOrdersCount = displayedOrders.filter(o => o.status === 'PREPARING').length;
   const servedOrdersCount = displayedOrders.filter(o => o.status === 'SERVED').length;
@@ -1357,7 +1357,7 @@ export default function HotelOwnerDashboard() {
       // Status filter
       if (orderMgmtStatusFilter !== 'ALL') {
         if (orderMgmtStatusFilter === 'ACTIVE') {
-          if (order.status === 'PAID' || order.status === 'COMPLETED') return false;
+          if (order.status === 'PAID' || order.status === 'COMPLETED' || order.status === 'CANCELLED') return false;
         } else if (order.status !== orderMgmtStatusFilter) {
           return false;
         }
