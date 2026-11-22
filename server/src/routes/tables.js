@@ -37,7 +37,7 @@ router.post('/', async (req, res) => {
     }
 
     stompBroker.broadcast('/topic/table_added', table);
-    res.json(table);
+    res.status(201).json(table);
   } catch (err) {
     console.error('Error adding table:', err.message);
     res.status(500).json({ error: 'Failed to add table' });
@@ -77,5 +77,29 @@ router.put('/:number/free', async (req, res) => {
     res.status(500).json({ error: 'Failed to free table' });
   }
 });
+
+const handleTableStatus = async (req, res) => {
+  try {
+    const hotelId = resolveHotelId(req);
+    const num = parseInt(req.params.number, 10);
+    const { status, currentOrderId } = req.body || {};
+    if (!status) {
+      return res.status(400).json({ error: 'Status is required' });
+    }
+    const table = await db.updateTableStatus(num, status, currentOrderId, hotelId);
+    if (!table) {
+      return res.status(404).json({ error: 'Table not found' });
+    }
+
+    stompBroker.broadcast('/topic/table_updated', table);
+    res.json(table);
+  } catch (err) {
+    console.error('Error updating table status:', err.message);
+    res.status(500).json({ error: 'Failed to update table status' });
+  }
+};
+
+router.patch('/:number/status', handleTableStatus);
+router.put('/:number/status', handleTableStatus);
 
 export default router;

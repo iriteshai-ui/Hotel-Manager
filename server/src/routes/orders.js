@@ -34,7 +34,7 @@ router.post('/', async (req, res) => {
     };
     stompBroker.broadcast('/topic/table_updated', tableUpdate);
 
-    res.json(newOrder);
+    res.status(201).json(newOrder);
   } catch (err) {
     console.error('Error placing order:', err.message);
     res.status(500).json({ error: 'Failed to place order' });
@@ -95,7 +95,7 @@ router.post('/:id/items', async (req, res) => {
   }
 });
 
-router.put('/:id/status', async (req, res) => {
+const handleOrderStatusUpdate = async (req, res) => {
   try {
     const { status } = req.body || {};
     const updatedOrder = await db.updateOrderStatus(req.params.id, status);
@@ -123,6 +123,9 @@ router.put('/:id/status', async (req, res) => {
     console.error('Error updating order status:', err.message);
     res.status(500).json({ error: 'Failed to update order status' });
   }
-});
+};
+
+router.put('/:id/status', handleOrderStatusUpdate);
+router.patch('/:id/status', handleOrderStatusUpdate);
 
 export default router;

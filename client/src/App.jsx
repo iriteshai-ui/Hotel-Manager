@@ -11,6 +11,7 @@ import Login    from './pages/Login';
 import HotelOnboarding from './pages/HotelOnboarding';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import HotelOwnerDashboard from './pages/HotelOwnerDashboard';
+import TableOrderManagement from './pages/TableOrderManagement';
 
 function ProtectedRoute({ children, roles = [], module = null }) {
   const { isAuthenticated, role, roles: userRoles, isSuperAdmin, canAccessModule } = useAuth();
@@ -57,6 +58,12 @@ function AppRoutes() {
       } />
       <Route path="/hotel-dashboard" element={
         <ProtectedRoute roles={['HOTEL_OWNER', 'MANAGER', 'RECEPTIONIST', 'ACCOUNTANT', 'SUPER_ADMIN']}><HotelOwnerDashboard /></ProtectedRoute>
+      } />
+      <Route path="/tables/:tableNumber/order" element={
+        <ProtectedRoute roles={['HOTEL_OWNER', 'MANAGER', 'WAITER', 'SUPER_ADMIN']}><TableOrderManagement /></ProtectedRoute>
+      } />
+      <Route path="/pos/table/:tableNumber" element={
+        <ProtectedRoute roles={['HOTEL_OWNER', 'MANAGER', 'WAITER', 'SUPER_ADMIN']}><TableOrderManagement /></ProtectedRoute>
       } />
       <Route path="/kitchen" element={
         <ProtectedRoute roles={['KITCHEN', 'MANAGER', 'SUPER_ADMIN']}><Kitchen /></ProtectedRoute>

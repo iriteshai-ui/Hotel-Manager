@@ -287,6 +287,20 @@ router.get('/staff/:id/attendance-history', async (req, res) => {
   }
 });
 
+// GET /api/hotel-owner/hotel and /api/hotel-owner/hotel/profile
+const getHotelDetails = async (req, res) => {
+  try {
+    const hotel = await multiTenantDb.getHotelById(req.targetHotelId);
+    if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
+    res.json(hotel);
+  } catch (err) {
+    console.error('Fetch hotel profile error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch hotel details' });
+  }
+};
+router.get('/hotel', getHotelDetails);
+router.get('/hotel/profile', getHotelDetails);
+
 // PUT /api/hotel-owner/hotel - Hotel Owner: Update own hotel details
 router.put('/hotel', async (req, res) => {
   try {

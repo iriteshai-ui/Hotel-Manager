@@ -547,6 +547,11 @@ export const multiTenantDb = {
     }));
   },
 
+  async getHotelById(hotelId) {
+    const res = await pool.query('SELECT * FROM hotels WHERE id = $1;', [hotelId]);
+    return res.rows[0] || null;
+  },
+
   async toggleHotelStatus(hotelId, status) {
     const res = await pool.query(
       'UPDATE hotels SET status = $1 WHERE id = $2 RETURNING *;',

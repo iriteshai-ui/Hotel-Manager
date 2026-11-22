@@ -176,7 +176,7 @@ export default function HotelOwnerDashboard() {
     guestName: '', guestEmail: '', guestPhone: '', roomNumber: '', roomCategory: 'Standard Room',
     checkIn: new Date().toISOString().split('T')[0],
     checkOut: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
-    totalAmount: 360, paidAmount: 360, paymentStatus: 'PAID', bookingSource: 'DIRECT', paymentMethod: 'CARD'
+    totalAmount: '', paidAmount: '', paymentStatus: 'PAID', bookingSource: 'DIRECT', paymentMethod: 'CARD'
   });
 
   const [showAddRoomModal, setShowAddRoomModal] = useState(false);
@@ -612,6 +612,24 @@ export default function HotelOwnerDashboard() {
       }
     } catch {
       showToast('Error freeing table', 'error');
+    }
+  };
+
+  const handleUpdateTableStatusAction = async (tableNum, status) => {
+    try {
+      const res = await fetch(`/api/tables/${tableNum}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ status })
+      });
+      if (res.ok) {
+        showToast(`Table ${tableNum} status updated to ${status}`);
+        fetchHotelTables();
+      } else {
+        showToast(`Failed to update Table ${tableNum} status`, 'error');
+      }
+    } catch {
+      showToast('Error updating table status', 'error');
     }
   };
 
@@ -1373,1069 +1391,599 @@ export default function HotelOwnerDashboard() {
         )}
 
         {/* ─────────────────────────────────────────────────────────── */}
-        {/* TAB 1: BUSINESS OVERVIEW (Main KPI Cards & Widgets)         */}
+        
         {/* ─────────────────────────────────────────────────────────── */}
-        {activeTab === 'overview' && dashboardData && (
-          <div className="p-8 space-y-8 animate-fade-in">
-            {/* 10 Core Business Overview KPI Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-              {/* 1. Today's Sales */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Today's Sales</span>
-                <span className="text-2xl font-black text-slate-900">{currencySymbol}{dashboardData.kpis.todaySales.toLocaleString()}</span>
-                <span className="text-[10px] font-bold text-emerald-600 block mt-1 flex items-center">
-                  <ArrowUpRight className="w-3 h-3" /> Invoiced today
-                </span>
-              </div>
-
-              {/* 2. Total Revenue */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Total Revenue</span>
-                <span className="text-2xl font-black text-slate-900">{currencySymbol}{dashboardData.kpis.totalRevenue.toLocaleString()}</span>
-                <span className="text-[10px] font-bold text-slate-400 block mt-1">Confirmed ledger</span>
-              </div>
-
-              {/* 3. Monthly Revenue */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Monthly Revenue</span>
-                <span className="text-2xl font-black text-indigo-600">{currencySymbol}{dashboardData.kpis.monthlyRevenue.toLocaleString()}</span>
-                <span className="text-[10px] font-bold text-indigo-500 block mt-1">Current month</span>
-              </div>
-
-              {/* 4. Total Bookings */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Total Bookings</span>
-                <span className="text-2xl font-black text-slate-900">{dashboardData.kpis.totalBookings}</span>
-                <span className="text-[10px] font-bold text-slate-400 block mt-1">Lifetime guests</span>
-              </div>
-
-              {/* 5. Room Occupancy % */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Occupancy Rate</span>
-                <span className="text-2xl font-black text-amber-600">{dashboardData.kpis.occupancyPercentage}%</span>
-                <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2 overflow-hidden">
-                  <div className="bg-amber-500 h-full rounded-full" style={{ width: `${Math.min(dashboardData.kpis.occupancyPercentage, 100)}%` }} />
+        {/* TAB 1: DINING DASHBOARD (Landing View - Restaurant First)   */}
+        {/* ─────────────────────────────────────────────────────────── */}
+        {(activeTab === 'dining-dashboard' || activeTab === 'overview') && (
+          <div className="p-6 sm:p-8 space-y-8 animate-fade-in">
+            {/* Header & Quick Action Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">Dining Floor Operations</h2>
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                    Restaurant POS Mode
+                  </span>
                 </div>
+                <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                  Real-time restaurant sales, floor turnover, raw material expenses, and net profit ledger
+                </p>
               </div>
 
-              {/* 6. Today's Check-ins */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Today's Check-ins</span>
-                <span className="text-2xl font-black text-emerald-600">{dashboardData.kpis.todayCheckIns}</span>
-                <span className="text-[10px] text-slate-400 block mt-1">Arriving guests</span>
-              </div>
-
-              {/* 7. Today's Check-outs */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Today's Check-outs</span>
-                <span className="text-2xl font-black text-slate-700">{dashboardData.kpis.todayCheckOuts}</span>
-                <span className="text-[10px] text-slate-400 block mt-1">Departing guests</span>
-              </div>
-
-              {/* 8. Occupied Rooms */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Occupied Rooms</span>
-                <span className="text-2xl font-black text-rose-600">{dashboardData.kpis.occupiedRooms}</span>
-                <span className="text-[10px] text-slate-400 block mt-1">of {dashboardData.kpis.totalRooms} total rooms</span>
-              </div>
-
-              {/* 9. Available Rooms */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Available Rooms</span>
-                <span className="text-2xl font-black text-emerald-600">{dashboardData.kpis.availableRooms}</span>
-                <span className="text-[10px] text-slate-400 block mt-1">Ready for check-in</span>
-              </div>
-
-              {/* 10. Average Room Revenue (ADR) */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Avg Room Rev (ADR)</span>
-                <span className="text-2xl font-black text-slate-900">{currencySymbol}{dashboardData.kpis.averageRoomRevenue}</span>
-                <span className="text-[10px] text-slate-400 block mt-1">Per booking average</span>
-              </div>
-            </div>
-
-            {/* Recent Bookings Table Widget */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="p-6 border-b border-slate-200 flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-black text-slate-900">Recent Guest Reservations</h3>
-                  <p className="text-xs text-slate-500">Live booking feed scoped strictly to this property</p>
-                </div>
-                <button
-                  onClick={() => setActiveTab('bookings')}
-                  className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1 cursor-pointer"
-                >
-                  <span>View All Bookings</span> <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-black tracking-wider text-[10px]">
-                    <tr>
-                      <th className="py-3.5 px-6">Booking Code</th>
-                      <th className="py-3.5 px-6">Guest Name</th>
-                      <th className="py-3.5 px-6">Room</th>
-                      <th className="py-3.5 px-6">Stay Dates</th>
-                      <th className="py-3.5 px-6">Total Amount</th>
-                      <th className="py-3.5 px-6">Payment</th>
-                      <th className="py-3.5 px-6">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {dashboardData.recentBookings.map((b) => (
-                      <tr key={b.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3.5 px-6 font-mono font-bold text-slate-800">{b.booking_code}</td>
-                        <td className="py-3.5 px-6 font-bold text-slate-900">{b.guest_name}</td>
-                        <td className="py-3.5 px-6 font-semibold text-slate-700">
-                          Room {b.room_number} <span className="text-[11px] text-slate-400">({b.room_category})</span>
-                        </td>
-                        <td className="py-3.5 px-6 font-medium text-slate-600">
-                          {b.check_in.split('T')[0]} → {b.check_out.split('T')[0]}
-                        </td>
-                        <td className="py-3.5 px-6 font-black text-slate-900 text-sm">
-                          {currencySymbol}{parseFloat(b.total_amount).toLocaleString()}
-                        </td>
-                        <td className="py-3.5 px-6">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
-                            b.payment_status === 'PAID' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
-                          }`}>
-                            {b.payment_status}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-6">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                            b.booking_status === 'CONFIRMED' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                            b.booking_status === 'COMPLETED' ? 'bg-slate-100 text-slate-700 border border-slate-200' :
-                            'bg-rose-50 text-rose-700 border border-rose-200'
-                          }`}>
-                            {b.booking_status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ─────────────────────────────────────────────────────────── */}
-        {/* TAB 2: SALES & REVENUE ANALYTICS (Interactive Charts)       */}
-        {/* ─────────────────────────────────────────────────────────── */}
-        {activeTab === 'analytics' && analyticsData && (
-          <div className="p-8 space-y-8 animate-fade-in">
-            {/* Date Range Selector Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
               <div className="flex items-center gap-2">
-                <Filter className="w-4 h-4 text-slate-400" />
-                <span className="text-xs font-bold text-slate-700">Analytics Period:</span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { id: 'today', label: 'Today' },
-                  { id: 'yesterday', label: 'Yesterday' },
-                  { id: 'last_7_days', label: 'Last 7 Days' },
-                  { id: 'last_30_days', label: 'Last 30 Days' },
-                  { id: 'this_month', label: 'This Month' },
-                  { id: 'this_year', label: 'This Year' },
-                ].map(r => (
-                  <button
-                    key={r.id}
-                    onClick={() => setDateRange(r.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                      dateRange === r.id
-                        ? 'bg-amber-600 text-white shadow-sm font-black'
-                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
-                    }`}
-                  >
-                    {r.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Daily Sales Trajectory Chart */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="text-base font-black text-slate-900">Daily Revenue Timeline</h3>
-                  <p className="text-xs text-slate-500">Daily verified guest reservations for this period</p>
-                </div>
-                <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg">
-                  {analyticsData.trends.length} Data Points
-                </span>
-              </div>
-
-              <div className="h-60 flex items-end gap-4 pt-6 px-4 border-b border-slate-100 overflow-x-auto">
-                {analyticsData.trends.map((t, idx) => {
-                  const maxSales = Math.max(...analyticsData.trends.map(m => m.sales), 500);
-                  const heightPct = Math.max((t.sales / maxSales) * 100, 12);
-                  return (
-                    <div key={idx} className="flex-1 min-w-[42px] flex flex-col items-center gap-2 group">
-                      <span className="text-[10px] font-bold text-slate-400 group-hover:text-amber-600 transition-colors">
-                        {currencySymbol}{t.sales}
-                      </span>
-                      <div 
-                        className="w-full bg-gradient-to-t from-amber-600 to-amber-500 rounded-t-xl group-hover:from-amber-500 group-hover:to-amber-400 transition-all shadow-md shadow-amber-600/10"
-                        style={{ height: `${heightPct}%` }}
-                      />
-                      <span className="text-[10px] font-bold text-slate-500 mt-1 whitespace-nowrap">
-                        {t.date.slice(5)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Breakdown Grid: Room Category + Booking Sources + Payment Methods */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Revenue by Room Category */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                <h4 className="text-sm font-black text-slate-900">Revenue by Room Category</h4>
-                <div className="space-y-3">
-                  {analyticsData.revenueByCategory.map(cat => (
-                    <div key={cat.category}>
-                      <div className="flex justify-between text-xs font-bold mb-1">
-                        <span className="text-slate-700">{cat.category}</span>
-                        <span className="text-slate-900">{currencySymbol}{cat.revenue.toLocaleString()}</span>
-                      </div>
-                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                        <div 
-                          className="bg-indigo-600 h-full rounded-full" 
-                          style={{ width: `${Math.min((cat.revenue / (dashboardData?.kpis?.totalRevenue || 1)) * 100, 100)}%` }}
-                        />
-                      </div>
-                      <span className="text-[10px] text-slate-400 font-medium">{cat.bookings} bookings</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Booking Source Breakdown */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                <h4 className="text-sm font-black text-slate-900">Booking Sources</h4>
-                <div className="space-y-3">
-                  {analyticsData.bookingSources.map(src => (
-                    <div key={src.source} className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-                      <div>
-                        <span className="text-xs font-bold text-slate-800 block">{src.source}</span>
-                        <span className="text-[10px] text-slate-400">{src.count} bookings</span>
-                      </div>
-                      <span className="font-black text-slate-900 text-xs">
-                        {currencySymbol}{src.revenue.toLocaleString()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Payment Methods (Cash vs Online vs Card) */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                <h4 className="text-sm font-black text-slate-900">Payment Methods Breakdown</h4>
-                <div className="space-y-3">
-                  {analyticsData.paymentMethods.map(pay => (
-                    <div key={pay.method} className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-                      <div>
-                        <span className="text-xs font-bold text-slate-800 block">{pay.method}</span>
-                        <span className="text-[10px] text-slate-400">{pay.count} transactions</span>
-                      </div>
-                      <span className="font-black text-slate-900 text-xs">
-                        {currencySymbol}{pay.amount.toLocaleString()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ─────────────────────────────────────────────────────────── */}
-        {/* TAB 3: BOOKINGS MANAGEMENT                                  */}
-        {/* ─────────────────────────────────────────────────────────── */}
-        {activeTab === 'bookings' && (
-          <div className="p-8 space-y-6 animate-fade-in">
-            {/* Filter & Search Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search guest name, booking code, room..."
-                  value={bookingSearch}
-                  onChange={e => setBookingSearch(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-amber-600"
-                />
-              </div>
-
-              {/* Status Filter Pills */}
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                {['ALL', 'CONFIRMED', 'COMPLETED', 'CANCELLED'].map(st => (
-                  <button
-                    key={st}
-                    onClick={() => setBookingStatusFilter(st)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                      bookingStatusFilter === st
-                        ? 'bg-amber-600 text-white shadow-sm font-black'
-                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
-                    }`}
-                  >
-                    {st}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Bookings Table */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-black tracking-wider text-[10px]">
-                    <tr>
-                      <th className="py-3.5 px-6">Booking Code</th>
-                      <th className="py-3.5 px-6">Guest Contact</th>
-                      <th className="py-3.5 px-6">Room / Category</th>
-                      <th className="py-3.5 px-6">Check-in / Check-out</th>
-                      <th className="py-3.5 px-6">Amount</th>
-                      <th className="py-3.5 px-6">Status</th>
-                      <th className="py-3.5 px-6 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {bookings.map((b) => (
-                      <tr key={b.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-4 px-6 font-mono font-bold text-slate-900">{b.booking_code}</td>
-                        <td className="py-4 px-6">
-                          <span className="font-bold text-slate-900 text-sm block">{b.guest_name}</span>
-                          <span className="text-[11px] text-slate-400">{b.guest_email || b.guest_phone || 'No direct phone'}</span>
-                        </td>
-                        <td className="py-4 px-6">
-                          <span className="font-bold text-slate-800 block">Room {b.room_number}</span>
-                          <span className="text-[11px] text-slate-400">{b.room_category}</span>
-                        </td>
-                        <td className="py-4 px-6 font-medium text-slate-700">
-                          {b.check_in.split('T')[0]} → {b.check_out.split('T')[0]}
-                        </td>
-                        <td className="py-4 px-6">
-                          <span className="font-black text-slate-900 text-sm">
-                            {currencySymbol}{parseFloat(b.total_amount).toLocaleString()}
-                          </span>
-                          <span className="text-[10px] text-emerald-600 block font-bold">{b.payment_status}</span>
-                        </td>
-                        <td className="py-4 px-6">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                            b.booking_status === 'CONFIRMED' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                            b.booking_status === 'COMPLETED' ? 'bg-slate-100 text-slate-700 border border-slate-200' :
-                            'bg-rose-50 text-rose-700 border border-rose-200'
-                          }`}>
-                            {b.booking_status}
-                          </span>
-                        </td>
-                        <td className="py-4 px-6 text-right space-x-1.5">
-                          {b.booking_status === 'CONFIRMED' && (
-                            <>
-                              <button
-                                onClick={() => handleUpdateBookingStatus(b.id, 'COMPLETED')}
-                                className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold text-[11px] transition-colors cursor-pointer"
-                              >
-                                Check-out
-                              </button>
-                              <button
-                                onClick={() => handleUpdateBookingStatus(b.id, 'CANCELLED')}
-                                className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold text-[11px] transition-colors cursor-pointer"
-                              >
-                                Cancel
-                              </button>
-                            </>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ─────────────────────────────────────────────────────────── */}
-        {/* TAB 4: ROOM MANAGEMENT                                      */}
-        {/* ─────────────────────────────────────────────────────────── */}
-        {activeTab === 'rooms' && (
-          <div className="p-8 space-y-6 animate-fade-in">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-xl font-black text-slate-900">Room Inventory & Availability Matrix</h3>
-                <p className="text-xs text-slate-500">Live room statuses, floor allocation, and pricing</p>
-              </div>
-              {(isSuperAdmin || hasPermission('ROOMS', 'can_add')) && (
                 <button
-                  onClick={() => setShowAddRoomModal(true)}
-                  className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                  onClick={() => { fetchDiningDashboard(); fetchHotelOrders(); fetchHotelTables(); }}
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
                 >
-                  <Plus className="w-4 h-4" /> Add Room to Inventory
+                  <RefreshCw className={`w-3.5 h-3.5 ${diningLoading ? 'animate-spin' : ''}`} />
+                  <span>Refresh</span>
                 </button>
-              )}
+                <button
+                  onClick={() => handleOpenNewOrder()}
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Take New Order</span>
+                </button>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {rooms.map((r) => (
-                <div key={r.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex justify-between items-start mb-3">
-                    <span className="text-2xl font-black text-slate-900">#{r.room_number}</span>
-                    <select
-                      value={r.status}
-                      onChange={(e) => handleUpdateRoomStatus(r.id, e.target.value)}
-                      className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border cursor-pointer ${
-                        r.status === 'AVAILABLE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                        r.status === 'OCCUPIED' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                        r.status === 'RESERVED' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                        'bg-slate-100 text-slate-700 border-slate-200'
-                      }`}
-                    >
-                      <option value="AVAILABLE">Available</option>
-                      <option value="OCCUPIED">Occupied</option>
-                      <option value="RESERVED">Reserved</option>
-                      <option value="MAINTENANCE">Maintenance</option>
-                    </select>
+            {/* ── 7 CORE DINING METRICS REQUIRED ── */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3.5">
+              {/* 1. Today's Total Sales */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">1. Today's Sales</span>
+                <div>
+                  <span className="text-xl lg:text-2xl font-black text-slate-900">
+                    {currencySymbol}{(diningDashboardData?.metrics?.todaySales || 0).toLocaleString()}
+                  </span>
+                  <span className="text-[10px] font-bold text-emerald-600 mt-1 flex items-center">
+                    <ArrowUpRight className="w-3 h-3 mr-0.5" /> Live register
+                  </span>
+                </div>
+              </div>
+
+              {/* 2. Total Orders */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">2. Total Orders</span>
+                <div>
+                  <span className="text-xl lg:text-2xl font-black text-slate-900">
+                    {diningDashboardData?.metrics?.totalOrders || displayedOrders.length}
+                  </span>
+                  <span className="text-[10px] font-medium text-slate-400 mt-1 block">
+                    Today & active queue
+                  </span>
+                </div>
+              </div>
+
+              {/* 3. Active / Pending Orders */}
+              <div className="bg-white p-4 rounded-2xl border border-amber-200 bg-amber-50/30 shadow-sm flex flex-col justify-between">
+                <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block mb-1">3. Active / Pending</span>
+                <div>
+                  <span className="text-xl lg:text-2xl font-black text-amber-700">
+                    {diningDashboardData?.metrics?.activeOrders ?? displayedOrders.filter(o => o.status !== 'PAID' && o.status !== 'COMPLETED').length}
+                  </span>
+                  <span className="text-[10px] font-bold text-amber-600 mt-1 flex items-center">
+                    <Clock className="w-3 h-3 mr-0.5" /> Kitchen cooking
+                  </span>
+                </div>
+              </div>
+
+              {/* 4. Completed Orders */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">4. Completed</span>
+                <div>
+                  <span className="text-xl lg:text-2xl font-black text-emerald-700">
+                    {diningDashboardData?.metrics?.completedOrders ?? displayedOrders.filter(o => o.status === 'PAID' || o.status === 'COMPLETED').length}
+                  </span>
+                  <span className="text-[10px] font-bold text-emerald-600 mt-1 flex items-center">
+                    <CheckCircle2 className="w-3 h-3 mr-0.5" /> Served & settled
+                  </span>
+                </div>
+              </div>
+
+              {/* 5. Total Expenses */}
+              <div className="bg-white p-4 rounded-2xl border border-rose-200 bg-rose-50/20 shadow-sm flex flex-col justify-between">
+                <span className="text-[10px] font-bold text-rose-800 uppercase tracking-wider block mb-1">5. Total Expenses</span>
+                <div>
+                  <span className="text-xl lg:text-2xl font-black text-rose-600">
+                    {currencySymbol}{(diningDashboardData?.metrics?.totalExpenses || totalExpensesAmount || 0).toLocaleString()}
+                  </span>
+                  <span className="text-[10px] font-medium text-rose-500 mt-1 block">
+                    Purchases & wages
+                  </span>
+                </div>
+              </div>
+
+              {/* 6. Gross Profit */}
+              <div className="bg-white p-4 rounded-2xl border border-blue-200 bg-blue-50/20 shadow-sm flex flex-col justify-between">
+                <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider block mb-1">6. Gross Profit</span>
+                <div>
+                  <span className="text-xl lg:text-2xl font-black text-blue-700">
+                    {currencySymbol}{(diningDashboardData?.metrics?.grossProfit || 0).toLocaleString()}
+                  </span>
+                  <span className="text-[10px] font-bold text-blue-600 mt-1 block">
+                    Sales − Food COGS
+                  </span>
+                </div>
+              </div>
+
+              {/* 7. Net Profit / Loss */}
+              <div className={`bg-white p-4 rounded-2xl border shadow-sm flex flex-col justify-between ${
+                (diningDashboardData?.metrics?.netProfit || 0) >= 0 ? 'border-emerald-300 bg-emerald-50/20' : 'border-rose-300 bg-rose-50/30'
+              }`}>
+                <span className="text-[10px] font-bold uppercase tracking-wider block mb-1 text-slate-600">
+                  7. Net Profit / Loss
+                </span>
+                <div>
+                  <span className={`text-xl lg:text-2xl font-black ${
+                    (diningDashboardData?.metrics?.netProfit || 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                  }`}>
+                    {currencySymbol}{(diningDashboardData?.metrics?.netProfit || 0).toLocaleString()}
+                  </span>
+                  <span className={`text-[10px] font-bold mt-1 block ${
+                    (diningDashboardData?.metrics?.netProfit || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                  }`}>
+                    {(diningDashboardData?.metrics?.netProfit || 0) >= 0 ? '✓ Profitable' : '⚠ Deficit after ops'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* ── SALES REPORTS & CHARTS (Daily, Weekly, Monthly) ── */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* 7-Day / Period Sales Trend Chart */}
+              <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Restaurant Sales Trend</h3>
+                    <p className="text-xs text-slate-500">Daily turnover and dining volume overview</p>
                   </div>
-
-                  <h4 className="text-sm font-bold text-slate-800 mb-0.5">{r.category}</h4>
-                  <p className="text-xs font-black text-slate-900 mb-3">
-                    {currencySymbol}{parseFloat(r.price_per_night)} <span className="text-slate-400 font-normal">/ night</span>
-                  </p>
-
-                  <div className="flex flex-wrap gap-1 pt-3 border-t border-slate-100">
-                    {(r.amenities || []).map((amenity, idx) => (
-                      <span key={idx} className="text-[10px] font-semibold bg-slate-50 text-slate-600 px-2 py-0.5 rounded border border-slate-100">
-                        {amenity}
-                      </span>
+                  <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+                    {['daily', 'weekly', 'monthly'].map(p => (
+                      <button
+                        key={p}
+                        onClick={() => setSalesReportPeriod(p)}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold capitalize transition-all cursor-pointer ${
+                          salesReportPeriod === p ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
+                        }`}
+                      >
+                        {p}
+                      </button>
                     ))}
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
 
-        {/* ─────────────────────────────────────────────────────────── */}
-        {/* TAB 5: CUSTOMER DIRECTORY                                   */}
-        {/* ─────────────────────────────────────────────────────────── */}
-        {activeTab === 'customers' && (
-          <div className="p-8 space-y-6 animate-fade-in">
-            <div>
-              <h3 className="text-xl font-black text-slate-900">Guest & Customer Directory</h3>
-              <p className="text-xs text-slate-500">Historical guest profile, contact details, and lifetime spending</p>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-black tracking-wider text-[10px]">
-                  <tr>
-                    <th className="py-3.5 px-6">Guest Profile</th>
-                    <th className="py-3.5 px-6">Contact Info</th>
-                    <th className="py-3.5 px-6">Total Bookings</th>
-                    <th className="py-3.5 px-6">Total Lifetime Spend</th>
-                    <th className="py-3.5 px-6">Last Visit</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {customers.map((c, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-4 px-6 font-bold text-slate-900 text-sm">{c.name}</td>
-                      <td className="py-4 px-6">
-                        <span className="font-semibold text-slate-800 block">{c.email || '—'}</span>
-                        <span className="text-[11px] text-slate-400 font-mono">{c.phone || '—'}</span>
-                      </td>
-                      <td className="py-4 px-6 font-bold text-slate-700">{c.totalBookings} stay{c.totalBookings === 1 ? '' : 's'}</td>
-                      <td className="py-4 px-6 font-black text-slate-900 text-sm">
-                        {currencySymbol}{c.totalSpent.toLocaleString()}
-                      </td>
-                      <td className="py-4 px-6 font-medium text-slate-500">
-                        {c.lastVisit ? c.lastVisit.split('T')[0] : 'Recent'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* ─────────────────────────────────────────────────────────── */}
-        {/* TAB 6: FINANCIAL REPORTS                                    */}
-        {/* ─────────────────────────────────────────────────────────── */}
-        {activeTab === 'financials' && financials && (
-          <div className="p-8 space-y-6 animate-fade-in">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-xl font-black text-slate-900">Hotel Financial Ledger & Reconciliations</h3>
-                <p className="text-xs text-slate-500">Gross sales, collections, refunds, and tax liabilities</p>
-              </div>
-              <button
-                onClick={() => {
-                  const csv = `Metric,Amount (${dashboardData?.hotel?.currency || 'USD'})\n` +
-                    `Gross Sales,${financials.grossSales}\n` +
-                    `Net Sales,${financials.netSales}\n` +
-                    `Total Collections,${financials.totalCollections}\n` +
-                    `Pending Payments,${financials.pendingPayments}\n` +
-                    `Discounts,${financials.totalDiscounts}\n` +
-                    `Refunds,${financials.totalRefunds}\n` +
-                    `Taxes,${financials.totalTaxes}\n`;
-                  const blob = new Blob([csv], { type: 'text/csv' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `${dashboardData?.hotel?.slug || 'hotel'}-financial-ledger.csv`;
-                  a.click();
-                  showToast('Financial report exported to CSV');
-                }}
-                className="px-4 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition-colors flex items-center gap-1.5 cursor-pointer"
-              >
-                <Download className="w-4 h-4" /> Download Excel/CSV Report
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
-                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Gross Invoiced Sales</span>
-                <span className="text-2xl font-black text-slate-900">{currencySymbol}{financials.grossSales.toLocaleString()}</span>
-                <p className="text-[11px] text-slate-500 mt-1">Confirmed guest billings</p>
-              </div>
-              <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
-                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Net Cleared Sales</span>
-                <span className="text-2xl font-black text-emerald-600">{currencySymbol}{financials.netSales.toLocaleString()}</span>
-                <p className="text-[11px] text-slate-500 mt-1">Gross minus discounts & refunds</p>
-              </div>
-              <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
-                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Total Settled Collections</span>
-                <span className="text-2xl font-black text-indigo-600">{currencySymbol}{financials.totalCollections.toLocaleString()}</span>
-                <p className="text-[11px] text-slate-500 mt-1">Received via Card, Online & Cash</p>
-              </div>
-              <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
-                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Pending Receivables</span>
-                <span className="text-2xl font-black text-amber-600">{currencySymbol}{financials.pendingPayments.toLocaleString()}</span>
-                <p className="text-[11px] text-slate-500 mt-1">Due upon check-out</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ─────────────────────────────────────────────────────────── */}
-        {/* TAB 7: STAFF MANAGEMENT & DAILY ATTENDANCE                  */}
-        {/* ─────────────────────────────────────────────────────────── */}
-        {activeTab === 'staff' && (
-          <div className="p-6 sm:p-8 space-y-6 animate-fade-in">
-            {/* Main Header with Sub-tabs and Registration */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div>
-                <h3 className="text-xl font-black text-slate-900">Hotel Staff & Daily Operations</h3>
-                <p className="text-xs text-slate-500">Track daily employee attendance, shifts, leave records, and team roster</p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                {/* View Switcher Pills */}
-                <div className="flex p-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold">
-                  <button
-                    type="button"
-                    onClick={() => setStaffSubTab('attendance')}
-                    className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-                      staffSubTab === 'attendance'
-                        ? 'bg-white text-slate-900 shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <CalendarCheck className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Daily Attendance</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStaffSubTab('directory')}
-                    className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-                      staffSubTab === 'directory'
-                        ? 'bg-white text-slate-900 shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <Users className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Staff Directory</span>
-                  </button>
-                </div>
-
-                {(isSuperAdmin || hasPermission('STAFF', 'can_add')) && (
-                  <button
-                    onClick={() => setShowAddStaffModal(true)}
-                    className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Register Staff</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* ── SUB-TAB 1: DAILY ATTENDANCE MANAGEMENT ── */}
-            {staffSubTab === 'attendance' && (
-              <div className="space-y-6">
-                {/* Date Controls & Filter Bar */}
-                <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                  {/* Left: Interactive Date Navigator */}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200">
-                      <button
-                        type="button"
-                        onClick={() => handleShiftAttendanceDay(-1)}
-                        className="p-1.5 rounded-lg hover:bg-white text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
-                        title="Previous Day"
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </button>
-                      <input
-                        type="date"
-                        value={attendanceDate}
-                        onChange={e => setAttendanceDate(e.target.value)}
-                        className="px-2 py-1 text-xs font-black text-slate-900 bg-transparent focus:outline-none cursor-pointer"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleShiftAttendanceDay(1)}
-                        className="p-1.5 rounded-lg hover:bg-white text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
-                        title="Next Day"
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleSetAttendanceToday}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
-                        attendanceDate === new Date().toISOString().split('T')[0]
-                          ? 'bg-amber-50 text-amber-800 border-amber-300 font-black'
-                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                      }`}
-                    >
-                      Today
-                    </button>
-
-                    <div className="text-xs font-bold text-slate-500 hidden sm:block pl-1">
-                      {new Date(attendanceDate + 'T00:00:00').toLocaleDateString('en-US', {
-                        weekday: 'short',
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric'
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Right: Quick Batch Actions & Search */}
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    {/* Shift Filter Pills */}
-                    <div className="flex p-0.5 rounded-xl bg-slate-100 border border-slate-200 text-[11px] font-bold">
-                      {['ALL', 'MORNING', 'EVENING', 'NIGHT'].map(sh => (
-                        <button
-                          key={sh}
-                          type="button"
-                          onClick={() => setStaffShiftFilter(sh)}
-                          className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                            staffShiftFilter === sh
-                              ? 'bg-white text-slate-900 shadow-xs font-black'
-                              : 'text-slate-500 hover:text-slate-900'
-                          }`}
-                        >
-                          {sh === 'ALL' ? 'All Shifts' : sh}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Search */}
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={staffSearchQuery}
-                        onChange={e => setStaffSearchQuery(e.target.value)}
-                        placeholder="Filter by name / role..."
-                        className="w-44 sm:w-52 pl-8 pr-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-amber-500"
-                      />
-                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-                    </div>
-
-                    {/* Mark All Present Button */}
-                    <button
-                      type="button"
-                      onClick={handleBatchMarkAllPresent}
-                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all flex items-center gap-1 cursor-pointer shadow-xs"
-                      title="Quickly mark all active staff as Present for this day"
-                    >
-                      <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                      <span>Mark All Present</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Daily Attendance Summary Cards */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3.5">
-                  {/* Total Staff */}
-                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold">
-                      <Users className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Staff</span>
-                      <span className="text-xl font-black text-slate-900">{attendanceSummary.totalStaff}</span>
-                    </div>
-                  </div>
-
-                  {/* Present */}
-                  <div className="bg-white p-4 rounded-2xl border border-emerald-200 bg-emerald-50/30 shadow-xs flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
-                      <Check className="w-5 h-5 stroke-[2.5]" />
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">Present</span>
-                      <span className="text-xl font-black text-emerald-700">{attendanceSummary.present}</span>
-                    </div>
-                  </div>
-
-                  {/* Absent */}
-                  <div className="bg-white p-4 rounded-2xl border border-rose-200 bg-rose-50/30 shadow-xs flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold">
-                      <X className="w-5 h-5 stroke-[2.5]" />
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider block">Absent</span>
-                      <span className="text-xl font-black text-rose-700">{attendanceSummary.absent}</span>
-                    </div>
-                  </div>
-
-                  {/* Half Day */}
-                  <div className="bg-white p-4 rounded-2xl border border-amber-200 bg-amber-50/30 shadow-xs flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
-                      <Clock className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">Half Day</span>
-                      <span className="text-xl font-black text-amber-800">{attendanceSummary.halfDay}</span>
-                    </div>
-                  </div>
-
-                  {/* On Leave */}
-                  <div className="bg-white p-4 rounded-2xl border border-purple-200 bg-purple-50/30 shadow-xs flex items-center gap-3 col-span-2 sm:col-span-1">
-                    <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
-                      <Calendar className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider block">On Leave</span>
-                      <span className="text-xl font-black text-purple-800">{attendanceSummary.leave}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Staff Attendance List */}
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                  <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-black uppercase tracking-wider text-slate-700">Staff Attendance Roster</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700">
-                        {filteredStaffAttendance.length} staff
-                      </span>
-                    </div>
-                    {attendanceSummary.unmarked > 0 && (
-                      <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
-                        ⚠️ {attendanceSummary.unmarked} staff pending attendance for today
-                      </span>
-                    )}
-                  </div>
-
-                  {filteredStaffAttendance.length === 0 ? (
-                    <div className="p-12 text-center text-slate-400 text-xs font-medium">
-                      No staff members match the selected filters.
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-slate-100">
-                      {filteredStaffAttendance.map(member => {
-                        const status = member.attendance_status;
-                        const isPresent = status === 'PRESENT';
-                        const isAbsent = status === 'ABSENT';
-                        const isHalfDay = status === 'HALF_DAY';
-                        const isLeave = status === 'LEAVE';
-                        const isUnmarked = !status || status === 'UNMARKED';
-
+                {/* Clean CSS/SVG Bar Chart - Real DB Records Only */}
+                <div className="pt-2">
+                  {(diningDashboardData?.salesByDay && diningDashboardData.salesByDay.length > 0) ? (
+                    <div className="h-44 flex items-end gap-3 sm:gap-6 px-2">
+                      {diningDashboardData.salesByDay.map((day, dIdx) => {
+                        const maxSales = Math.max(
+                          ...diningDashboardData.salesByDay.map(d => Number(d.sales) || 0),
+                          1
+                        );
+                        const sVal = Number(day.sales) || 0;
+                        const heightPct = sVal > 0 ? Math.min(100, Math.max(12, Math.round((sVal / maxSales) * 100))) : 4;
                         return (
-                          <div
-                            key={member.staff_id || member.id}
-                            className={`p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors hover:bg-slate-50/70 ${
-                              isAbsent ? 'bg-rose-50/20' : isPresent ? 'bg-emerald-50/15' : ''
-                            }`}
-                          >
-                            {/* Staff Member Info */}
-                            <div className="flex items-center gap-3.5 min-w-[240px]">
-                              <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-black text-sm shrink-0 border ${
-                                member.shift === 'MORNING' ? 'bg-amber-50 border-amber-200 text-amber-800' :
-                                member.shift === 'EVENING' ? 'bg-indigo-50 border-indigo-200 text-indigo-800' :
-                                'bg-slate-100 border-slate-300 text-slate-800'
-                              }`}>
-                                {member.name ? member.name.charAt(0).toUpperCase() : 'S'}
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <h4 className="text-sm font-black text-slate-900">{member.name}</h4>
-                                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
-                                    member.shift === 'MORNING' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                    member.shift === 'EVENING' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
-                                    'bg-slate-100 text-slate-700 border-slate-200'
-                                  }`}>
-                                    {member.shift || 'MORNING'}
-                                  </span>
-                                </div>
-                                <p className="text-xs font-semibold text-slate-500 mt-0.5">{member.role}</p>
-                                <p className="text-[11px] font-mono text-slate-400 mt-0.5">
-                                  {member.phone || member.email || 'No contact specified'}
-                                </p>
-                              </div>
+                          <div key={dIdx} className="flex-1 flex flex-col items-center gap-1.5 group">
+                            <span className="text-[10px] font-mono font-bold text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {currencySymbol}{sVal}
+                            </span>
+                            <div className="w-full bg-slate-100 rounded-t-xl h-36 flex items-end overflow-hidden p-1">
+                              <div 
+                                className={`w-full rounded-t-lg transition-all duration-300 ${sVal > 0 ? 'bg-amber-500 group-hover:bg-amber-600' : 'bg-slate-200'}`}
+                                style={{ height: `${heightPct}%` }}
+                              />
                             </div>
-
-                            {/* Current Status Badge */}
-                            <div className="flex items-center gap-2 min-w-[130px]">
-                              {isPresent && (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
-                                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                                  Present
-                                </span>
-                              )}
-                              {isAbsent && (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-800 border border-rose-300">
-                                  <span className="w-2 h-2 rounded-full bg-rose-500" />
-                                  Absent
-                                </span>
-                              )}
-                              {isHalfDay && (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-900 border border-amber-300">
-                                  <span className="w-2 h-2 rounded-full bg-amber-500" />
-                                  Half Day
-                                </span>
-                              )}
-                              {isLeave && (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-purple-100 text-purple-900 border border-purple-300">
-                                  <span className="w-2 h-2 rounded-full bg-purple-500" />
-                                  On Leave
-                                </span>
-                              )}
-                              {isUnmarked && (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500 border border-dashed border-slate-300">
-                                  <span className="w-2 h-2 rounded-full bg-slate-400" />
-                                  Unmarked
-                                </span>
-                              )}
-                              {member.notes && (
-                                <span className="text-[10px] text-slate-400 italic truncate max-w-[120px]" title={member.notes}>
-                                  "{member.notes}"
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Quick Attendance Marking Actions */}
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              {/* Quick 1-Click Present */}
-                              <button
-                                type="button"
-                                onClick={() => handleMarkAttendance(member, 'PRESENT')}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1 cursor-pointer border ${
-                                  isPresent
-                                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
-                                    : 'bg-white hover:bg-emerald-50 text-emerald-700 border-slate-200 hover:border-emerald-300'
-                                }`}
-                                title="Mark Present"
-                              >
-                                <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                                <span>Present</span>
-                              </button>
-
-                              {/* Quick 1-Click Absent */}
-                              <button
-                                type="button"
-                                onClick={() => handleMarkAttendance(member, 'ABSENT')}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1 cursor-pointer border ${
-                                  isAbsent
-                                    ? 'bg-rose-600 text-white border-rose-700 shadow-xs'
-                                    : 'bg-white hover:bg-rose-50 text-rose-700 border-slate-200 hover:border-rose-300'
-                                }`}
-                                title="Mark Absent"
-                              >
-                                <X className="w-3.5 h-3.5 stroke-[2.5]" />
-                                <span>Absent</span>
-                              </button>
-
-                              {/* Dropdown for Half Day / Leave / Edit */}
-                              <select
-                                value={status === 'UNMARKED' ? '' : status}
-                                onChange={e => {
-                                  if (e.target.value) {
-                                    handleMarkAttendance(member, e.target.value);
-                                  }
-                                }}
-                                className="px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:border-slate-300 cursor-pointer focus:outline-none"
-                              >
-                                <option value="" disabled>Status ▾</option>
-                                <option value="PRESENT">Present</option>
-                                <option value="ABSENT">Absent</option>
-                                <option value="HALF_DAY">Half Day</option>
-                                <option value="LEAVE">Leave</option>
-                              </select>
-
-                              {/* Monthly History Button */}
-                              <button
-                                type="button"
-                                onClick={() => handleOpenMonthlyHistory(member)}
-                                className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
-                                title="View monthly attendance history"
-                              >
-                                <CalendarDays className="w-3.5 h-3.5 text-slate-600" />
-                                <span>History</span>
-                              </button>
-                            </div>
+                            <span className="text-[11px] font-bold text-slate-600 uppercase">{day.label || day.date?.slice(-5)}</span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                              {day.orders || 0} ord
+                            </span>
                           </div>
                         );
                       })}
                     </div>
+                  ) : (
+                    <div className="h-44 flex items-center justify-center text-xs text-slate-400 font-medium">
+                      No sales recorded in this period.
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pt-3 border-t border-slate-100 font-medium">
+                  <span>7-Day Volume: <strong>{diningDashboardData?.salesByDay?.reduce((s, d) => s + (Number(d.orders) || 0), 0) || 0} Orders</strong></span>
+                  <span>Avg Ticket: <strong>{currencySymbol}{diningDashboardData?.metrics?.totalOrders ? ((diningDashboardData?.metrics?.todaySales || 0) / diningDashboardData.metrics.totalOrders).toFixed(0) : '0'}</strong></span>
+                  <span>Status: <strong className="text-emerald-600 font-bold">● Active Dining Floor</strong></span>
+                </div>
+              </div>
+
+              {/* Quick Floor Pulse & Low Stock Card */}
+              <div className="space-y-6">
+                {/* Table Floor Pulse */}
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">Table Floor Pulse</h4>
+                    <button
+                      onClick={() => setActiveTab('table-management')}
+                      className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center cursor-pointer"
+                    >
+                      Floor Plan <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2 pt-1">
+                    {displayedTables.slice(0, 11).map((tbl) => {
+                      const occ = tbl.status === 'OCCUPIED';
+                      const res = tbl.status === 'RESERVED';
+                      return (
+                        <div
+                          key={tbl.number}
+                          onClick={() => navigate(`/tables/${tbl.number}/order`)}
+                          className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer group hover:shadow-xs ${
+                            occ
+                              ? 'bg-amber-50 border-amber-300 text-amber-900'
+                              : res
+                              ? 'bg-blue-50 border-blue-300 text-blue-900'
+                              : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-emerald-300'
+                          }`}
+                          title={`Table ${tbl.number}: Click to open dedicated order screen`}
+                        >
+                          <span className="block text-xs font-black group-hover:text-amber-600 transition-colors">T{tbl.number}</span>
+                          <span className={`text-[9px] font-bold uppercase tracking-wider block mt-0.5 ${
+                            occ ? 'text-amber-700' : res ? 'text-blue-700' : 'text-emerald-600'
+                          }`}>
+                            {occ ? 'Eating' : res ? 'Reserved' : 'Free'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] text-slate-500 font-medium">
+                    <span>Occupied: <strong className="text-amber-600">{occupiedTablesCount}</strong></span>
+                    <span>Reserved: <strong className="text-blue-600">{displayedTables.filter(t => t.status === 'RESERVED').length}</strong></span>
+                    <span>Free: <strong className="text-emerald-600">{Math.max(0, displayedTables.filter(t => t.status === 'AVAILABLE' || (!t.status && t.status !== 'OCCUPIED' && t.status !== 'RESERVED')).length)}</strong></span>
+                  </div>
+                </div>
+
+                {/* Low Stock Alerts */}
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <AlertCircle className="w-4 h-4 text-amber-600" />
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">Kitchen Stock Warnings</h4>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab('inventory-management')}
+                      className="text-xs font-bold text-amber-600 hover:text-amber-700 cursor-pointer"
+                    >
+                      Manage Stock ↗
+                    </button>
+                  </div>
+
+                  {(diningDashboardData?.lowStockItems || []).length === 0 ? (
+                    <div className="py-3 px-3 bg-emerald-50 rounded-xl text-emerald-800 text-xs font-bold flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>All ingredients and gas stock above minimum thresholds</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {(diningDashboardData?.lowStockItems || []).map((item) => (
+                        <div key={item.id} className="p-2.5 rounded-xl bg-amber-50/80 border border-amber-200 flex items-center justify-between">
+                          <div>
+                            <span className="text-xs font-bold text-amber-950 block">{item.item_name}</span>
+                            <span className="text-[10px] text-amber-800 font-medium">
+                              Left: <strong>{item.quantity} {item.unit}</strong> (Min: {item.min_threshold} {item.unit})
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setRestockTargetItem(item);
+                              setRestockAddQuantity('');
+                              setShowRestockModal(true);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-black uppercase tracking-wider cursor-pointer shadow-sm"
+                          >
+                            Restock
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               </div>
-            )}
+            </div>
 
-            {/* ── SUB-TAB 2: STAFF DIRECTORY ROSTER ── */}
-            {staffSubTab === 'directory' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {staff.map((s) => (
-                  <div key={s.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                    <div>
-                      <div className="flex justify-between items-start mb-3">
-                        <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center font-bold text-amber-700 text-sm">
-                          {s.name.charAt(0)}
-                        </div>
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          {s.status}
-                        </span>
-                      </div>
-                      <h4 className="text-base font-black text-slate-900">{s.name}</h4>
-                      <p className="text-xs font-bold text-amber-600 mb-2">{s.role}</p>
-                      <div className="text-xs text-slate-500 space-y-0.5 pt-2 border-t border-slate-100">
-                        <p>Shift: <strong className="text-slate-700">{s.shift}</strong></p>
-                        <p className="font-mono text-[11px]">{s.email || s.phone || 'No direct contact'}</p>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleOpenMonthlyHistory(s)}
-                      className="w-full mt-4 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <CalendarDays className="w-3.5 h-3.5 text-amber-600" />
-                      <span>Monthly Attendance</span>
-                    </button>
-                  </div>
-                ))}
+            {/* ── LIVE RECENT ORDERS PREVIEW ── */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Recent Live Orders</h3>
+                  <p className="text-xs text-slate-500">Latest active and fulfilled table orders</p>
+                </div>
+                <button
+                  onClick={() => setActiveTab('order-management')}
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>All Orders Console</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
               </div>
-            )}
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-2.5 px-3">Order ID</th>
+                      <th className="py-2.5 px-3">Table #</th>
+                      <th className="py-2.5 px-3">Items Summary</th>
+                      <th className="py-2.5 px-3">Total Amount</th>
+                      <th className="py-2.5 px-3">Status</th>
+                      <th className="py-2.5 px-3 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {displayedOrders.slice(0, 5).map((ord) => {
+                      const subtotal = ord.items?.reduce((s, i) => s + (i.price * i.quantity), 0) || ord.totalPrice || 0;
+                      const itemsList = Array.isArray(ord.items) 
+                        ? ord.items.map(i => `${i.quantity}x ${i.name || i.item_name}`).join(', ')
+                        : 'Dining Order';
+                      return (
+                        <tr key={ord.id} className="hover:bg-slate-50/60">
+                          <td className="py-3 px-3 font-mono font-bold text-slate-800">#{ord.id.slice(-6)}</td>
+                          <td className="py-3 px-3">
+                            <span className="px-2 py-0.5 rounded-lg bg-amber-100 text-amber-900 font-black text-[11px]">
+                              Table {ord.tableNumber || ord.table_number}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-slate-600 max-w-xs truncate" title={itemsList}>
+                            {itemsList}
+                          </td>
+                          <td className="py-3 px-3 font-black text-slate-900">{currencySymbol}{parseFloat(subtotal).toFixed(2)}</td>
+                          <td className="py-3 px-3">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                              ord.status === 'PLACED' ? 'bg-blue-100 text-blue-800' :
+                              ord.status === 'PREPARING' ? 'bg-amber-100 text-amber-800' :
+                              ord.status === 'SERVED' ? 'bg-emerald-100 text-emerald-800' :
+                              'bg-slate-100 text-slate-700'
+                            }`}>
+                              {ord.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-right">
+                            <button
+                              onClick={() => {
+                                setBillingOrder(ord);
+                                setBillingTableNumber(ord.tableNumber || ord.table_number);
+                              }}
+                              className="text-amber-600 hover:text-amber-700 font-bold text-xs cursor-pointer"
+                            >
+                              View Bill
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
 
         {/* ─────────────────────────────────────────────────────────── */}
-        {/* TAB 8: PROPERTY SETTINGS                                    */}
+        {/* TAB 2: ORDER MANAGEMENT CONSOLE (Filters, Status, Add Items) */}
         {/* ─────────────────────────────────────────────────────────── */}
-        {activeTab === 'settings' && dashboardData && (
-          <div className="p-8 max-w-3xl space-y-6 animate-fade-in">
+        {(activeTab === 'order-management' || activeTab === 'live-orders') && (
+          <div className="p-6 sm:p-8 space-y-6 animate-fade-in">
+            {/* Header & Quick Action */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h3 className="text-xl font-black text-slate-900">Hotel Property Configuration & Policies</h3>
-                <p className="text-xs text-slate-500">Manage hotel profile, contact information, tax rates, and active/inactive operational status.</p>
+                <h3 className="text-xl font-black text-slate-900">Order Management & Kitchen Fulfillment</h3>
+                <p className="text-xs text-slate-500">Filter, update statuses, append dishes, and print table receipts</p>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleToggleHotelPropertyStatus}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 shadow-xs ${
-                    dashboardData.hotel.status === 'ACTIVE'
-                      ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
-                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
-                  }`}
-                  title={dashboardData.hotel.status === 'ACTIVE' ? 'Deactivate Hotel' : 'Activate Hotel'}
-                >
-                  <span className={`w-2 h-2 rounded-full ${dashboardData.hotel.status === 'ACTIVE' ? 'bg-rose-500' : 'bg-emerald-500'}`} />
-                  <span>{dashboardData.hotel.status === 'ACTIVE' ? 'Deactivate Hotel' : 'Activate Hotel'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleOpenEditHotelModal}
-                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md shadow-amber-600/20"
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  <span>Edit Details</span>
-                </button>
-              </div>
-            </div>
 
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex justify-between items-center py-3 border-b border-slate-100">
-                <span className="text-xs font-bold text-slate-500 uppercase">Property Name</span>
-                <span className="text-sm font-bold text-slate-900">{dashboardData.hotel.name}</span>
-              </div>
-              <div className="flex justify-between items-center py-3 border-b border-slate-100">
-                <span className="text-xs font-bold text-slate-500 uppercase">Operational Status</span>
-                <span
-                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
-                    dashboardData.hotel.status === 'ACTIVE'
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-rose-50 text-rose-700 border-rose-200'
-                  }`}
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full ${dashboardData.hotel.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                  {dashboardData.hotel.status === 'ACTIVE' ? 'Active & Open' : 'Inactive / Closed'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center py-3 border-b border-slate-100">
-                <span className="text-xs font-bold text-slate-500 uppercase">Public Guest Menu</span>
+              <div className="flex items-center gap-2.5">
                 <a
-                  href={`/menu?hotel=${dashboardData.hotel.slug}`}
+                  href="/kitchen"
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 hover:text-amber-800 bg-amber-50 px-3 py-1 rounded-lg border border-amber-200 no-underline"
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all flex items-center gap-1.5 no-underline"
                 >
-                  <span>/{dashboardData.hotel.slug}</span>
-                  <ExternalLink className="w-3 h-3" />
+                  <ChefHat className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Kitchen KDS ↗</span>
                 </a>
-              </div>
-              <div className="flex justify-between items-center py-3 border-b border-slate-100">
-                <span className="text-xs font-bold text-slate-500 uppercase">Concierge / Contact Phone</span>
-                <span className="text-sm font-mono font-bold text-slate-900">
-                  {dashboardData.hotel.contactPhone || '—'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center py-3 border-b border-slate-100">
-                <span className="text-xs font-bold text-slate-500 uppercase">Contact Email</span>
-                <span className="text-sm font-mono text-slate-700">
-                  {dashboardData.hotel.contactEmail || '—'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center py-3 border-b border-slate-100">
-                <span className="text-xs font-bold text-slate-500 uppercase">Settlement Currency</span>
-                <span className="text-sm font-bold text-slate-900">{dashboardData.hotel.currency} ({currencySymbol})</span>
-              </div>
-              <div className="flex justify-between items-center py-3">
-                <span className="text-xs font-bold text-slate-500 uppercase">Default Room & Dining Tax</span>
-                <span className="text-sm font-bold text-slate-900">{dashboardData.hotel.taxPercentage}%</span>
+                <button
+                  onClick={() => handleOpenNewOrder()}
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Create Table Order</span>
+                </button>
               </div>
             </div>
+
+            {/* Filter Bar: Date, Table, Status, Search */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* Search */}
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search dish, guest, order #..."
+                    value={orderSearchQuery}
+                    onChange={e => setOrderSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:border-amber-600"
+                  />
+                </div>
+
+                {/* Status Filter */}
+                <div>
+                  <select
+                    value={orderMgmtStatusFilter}
+                    onChange={e => setOrderMgmtStatusFilter(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white font-bold text-slate-700 focus:outline-none focus:border-amber-600 cursor-pointer"
+                  >
+                    <option value="ALL">All Statuses ({displayedOrders.length})</option>
+                    <option value="ACTIVE">Active (Unsettled)</option>
+                    <option value="PLACED">Placed / Pending</option>
+                    <option value="PREPARING">Preparing</option>
+                    <option value="SERVED">Served</option>
+                    <option value="PAID">Completed / Paid</option>
+                  </select>
+                </div>
+
+                {/* Table Filter */}
+                <div>
+                  <select
+                    value={orderTableFilter}
+                    onChange={e => setOrderTableFilter(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white font-bold text-slate-700 focus:outline-none focus:border-amber-600 cursor-pointer"
+                  >
+                    <option value="ALL">All Tables</option>
+                    {displayedTables.map(t => (
+                      <option key={t.number} value={t.number}>Table {t.number}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Date Filter */}
+                <div>
+                  <select
+                    value={orderDateFilter}
+                    onChange={e => setOrderDateFilter(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white font-bold text-slate-700 focus:outline-none focus:border-amber-600 cursor-pointer"
+                  >
+                    <option value="ALL">All Dates</option>
+                    <option value="TODAY">Today's Orders</option>
+                    <option value="YESTERDAY">Yesterday's Orders</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Orders Cards Grid */}
+            {filteredManagementOrders.length === 0 ? (
+              <div className="p-12 text-center bg-white rounded-2xl border border-slate-200">
+                <ChefHat className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                <h4 className="text-sm font-bold text-slate-700">No orders match these filters</h4>
+                <p className="text-xs text-slate-400 mt-1">Try clearing your filters or select a different table.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredManagementOrders.map(order => {
+                  const subtotal = order.items?.reduce((s, i) => s + (i.price * i.quantity), 0) || order.totalPrice || 0;
+                  const isSettled = order.status === 'PAID' || order.status === 'COMPLETED';
+
+                  return (
+                    <div key={order.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col justify-between hover:border-slate-300 transition-all">
+                      <div>
+                        <div className="flex justify-between items-center mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2.5 py-1 rounded-lg bg-slate-900 text-white text-xs font-black">
+                              Table {order.tableNumber || order.table_number}
+                            </span>
+                            <span className="text-[11px] font-mono text-slate-400">#{order.id.slice(-6)}</span>
+                          </div>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                            order.status === 'PLACED' ? 'bg-blue-100 text-blue-800' :
+                            order.status === 'PREPARING' ? 'bg-amber-100 text-amber-800' :
+                            order.status === 'SERVED' ? 'bg-emerald-100 text-emerald-800' :
+                            'bg-slate-100 text-slate-700'
+                          }`}>
+                            {order.status}
+                          </span>
+                        </div>
+
+                        {/* Order Items List */}
+                        <div className="divide-y divide-slate-100 my-3">
+                          {order.items?.map((item, idx) => (
+                            <div key={idx} className="py-1.5 flex justify-between items-center text-xs">
+                              <span className="text-slate-800 font-medium">
+                                <strong className="text-amber-700 mr-1.5">{item.quantity}x</strong>
+                                {item.name || item.item_name}
+                              </span>
+                              <span className="font-bold text-slate-700 font-mono">
+                                {currencySymbol}{((item.price || 0) * (item.quantity || 1)).toFixed(2)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {order.notes && (
+                          <div className="p-2 rounded-lg bg-amber-50 text-[11px] text-amber-800 mb-3 border border-amber-100">
+                            <strong>Note:</strong> {order.notes}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="pt-3 border-t border-slate-100 space-y-2.5">
+                        <div className="flex justify-between items-center font-bold">
+                          <span className="text-xs text-slate-500">Order Subtotal:</span>
+                          <span className="text-sm font-black text-slate-900">{currencySymbol}{parseFloat(subtotal).toFixed(2)}</span>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-2">
+                          {!isSettled && (
+                            <button
+                              onClick={() => handleOpenAddItems(order, order.tableNumber || order.table_number)}
+                              className="px-2.5 py-1.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                              title="Add more items to this order"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Add Items</span>
+                            </button>
+                          )}
+
+                          {order.status === 'PLACED' && (
+                            <button
+                              onClick={async () => {
+                                await handleUpdateOrderStatusAction(order.id, 'PREPARING');
+                                showToast(`Order #${order.id.slice(-6)} set to Preparing`);
+                              }}
+                              className="flex-1 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all cursor-pointer text-center"
+                            >
+                              Start Preparing
+                            </button>
+                          )}
+
+                          {order.status === 'PREPARING' && (
+                            <button
+                              onClick={async () => {
+                                await handleUpdateOrderStatusAction(order.id, 'SERVED');
+                                showToast(`Order #${order.id.slice(-6)} marked Served`);
+                              }}
+                              className="flex-1 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all cursor-pointer text-center"
+                            >
+                              Mark Served
+                            </button>
+                          )}
+
+                          {(order.status === 'SERVED' || isSettled) && (
+                            <button
+                              onClick={() => handleSettleOrder(order, order.tableNumber || order.table_number)}
+                              className="flex-1 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1"
+                            >
+                              <Receipt className="w-3.5 h-3.5" />
+                              <span>{isSettled ? 'Print Bill' : 'Settle & Print'}</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
-
+{/* TAB: DINING TABLES & FLOOR PLAN                             */}
         {/* ─────────────────────────────────────────────────────────── */}
-        {/* TAB: DINING TABLES & FLOOR PLAN                             */}
-        {/* ─────────────────────────────────────────────────────────── */}
-        {activeTab === 'dining-tables' && (
+        {(activeTab === 'table-management' || activeTab === 'dining-tables') && (
           <div className="p-8 space-y-6 animate-fade-in">
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -2462,7 +2010,7 @@ export default function HotelOwnerDashboard() {
             </div>
 
             {/* Metric Summary Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3.5">
               <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Total Tables</span>
                 <span className="text-2xl font-black text-slate-900">{displayedTables.length}</span>
@@ -2477,15 +2025,24 @@ export default function HotelOwnerDashboard() {
               </div>
               <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Available Tables</span>
-                <span className="text-2xl font-black text-emerald-600">{Math.max(0, displayedTables.length - occupiedTablesCount)}</span>
+                <span className="text-2xl font-black text-emerald-600">
+                  {displayedTables.filter(t => t.status === 'AVAILABLE' || (!t.status && t.status !== 'OCCUPIED' && t.status !== 'RESERVED')).length}
+                </span>
                 <span className="text-[10px] font-bold text-emerald-600 block mt-1 flex items-center">
                   <CheckCircle2 className="w-3 h-3 mr-1" /> Ready for seating
                 </span>
               </div>
               <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Reserved Tables</span>
+                <span className="text-2xl font-black text-blue-600">
+                  {displayedTables.filter(t => t.status === 'RESERVED').length}
+                </span>
+                <span className="text-[10px] font-bold text-blue-600 block mt-1">Reserved guests</span>
+              </div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Active Kitchen Orders</span>
-                <span className="text-2xl font-black text-blue-600">{displayedOrders.filter(o => o.status !== 'PAID').length}</span>
-                <span className="text-[10px] font-bold text-blue-600 block mt-1">Placed / Preparing</span>
+                <span className="text-2xl font-black text-purple-600">{displayedOrders.filter(o => o.status !== 'PAID').length}</span>
+                <span className="text-[10px] font-bold text-purple-600 block mt-1">Placed / Preparing</span>
               </div>
             </div>
 
@@ -2493,49 +2050,93 @@ export default function HotelOwnerDashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {displayedTables.map(table => {
                 const isOccupied = table.status === 'OCCUPIED';
+                const isReserved = table.status === 'RESERVED';
                 const currentOrder = displayedOrders.find(o => 
                   (table.currentOrderId && String(o.id) === String(table.currentOrderId)) || 
                   (Number(o.tableNumber) === Number(table.number) && o.status !== 'PAID')
                 );
-                const orderTotal = currentOrder?.totalPrice ?? currentOrder?.total ?? currentOrder?.items?.reduce((s, i) => s + (i.price * i.quantity), 0) ?? 0;
+                const orderTotal = currentOrder?.totalPrice ?? currentOrder?.total ?? currentOrder?.items?.reduce((s, i) => s + ((i.price || 0) * (i.quantity || 1)), 0) ?? 0;
 
                 return (
                   <div
                     key={table.id || table.number}
-                    className={`bg-white rounded-2xl border p-5 transition-all shadow-sm flex flex-col justify-between ${
-                      isOccupied ? 'border-amber-300 ring-1 ring-amber-200' : 'border-slate-200 hover:border-slate-300'
+                    className={`bg-white rounded-2xl border p-5 transition-all shadow-sm flex flex-col justify-between group hover:shadow-md ${
+                      isOccupied
+                        ? 'border-amber-300 ring-1 ring-amber-200'
+                        : isReserved
+                        ? 'border-blue-300 ring-1 ring-blue-200 bg-blue-50/20'
+                        : 'border-slate-200 hover:border-slate-300'
                     }`}
                   >
                     <div>
+                      {/* Top Header: Table Number + Capacity + Interactive Status Selector + New Tab Button */}
                       <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
+                        <div 
+                          onClick={() => navigate(`/tables/${table.number}/order`)}
+                          className="flex items-center gap-2 cursor-pointer"
+                        >
                           <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs ${
-                            isOccupied ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'
+                            isOccupied
+                              ? 'bg-amber-100 text-amber-800'
+                              : isReserved
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-emerald-100 text-emerald-800'
                           }`}>
                             T{table.number}
                           </div>
                           <div>
-                            <h4 className="text-sm font-black text-slate-900">Table {table.number}</h4>
+                            <h4 className="text-sm font-black text-slate-900 flex items-center gap-1 group-hover:text-amber-600 transition-colors">
+                              <span>Table {table.number}</span>
+                              <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-60 transition-opacity" />
+                            </h4>
                             <span className="text-[10px] text-slate-400 font-medium">{table.capacity || 4} Seats</span>
                           </div>
                         </div>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                          isOccupied ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
-                        }`}>
-                          {isOccupied ? 'Occupied' : 'Available'}
-                        </span>
+
+                        {/* Interactive Status Selector */}
+                        <div className="flex items-center gap-1.5">
+                          <select
+                            value={table.status || 'AVAILABLE'}
+                            onChange={(e) => handleUpdateTableStatusAction(table.number, e.target.value)}
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border cursor-pointer focus:outline-none ${
+                              isOccupied
+                                ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                : isReserved
+                                ? 'bg-blue-100 text-blue-800 border-blue-300'
+                                : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                            }`}
+                          >
+                            <option value="AVAILABLE">Available</option>
+                            <option value="OCCUPIED">Occupied</option>
+                            <option value="RESERVED">Reserved</option>
+                          </select>
+
+                          <button
+                            type="button"
+                            onClick={() => window.open(`/tables/${table.number}/order`, '_blank')}
+                            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                            title="Open dedicated ordering screen in new tab"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
 
-                      {/* Order Info if Occupied */}
+                      {/* Middle Body */}
                       {isOccupied ? (
                         currentOrder ? (
-                          <div className="my-3 p-3.5 rounded-xl bg-amber-50/90 border border-amber-200 text-xs">
+                          <div 
+                            onClick={() => navigate(`/tables/${table.number}/order`)}
+                            className="my-3 p-3.5 rounded-xl bg-amber-50/90 border border-amber-200 text-xs cursor-pointer hover:bg-amber-100/70 transition-colors"
+                            title="Click to view & manage order"
+                          >
                             <div className="flex justify-between items-center mb-2 pb-1.5 border-b border-amber-200/70">
                               <span className="text-[11px] font-black uppercase tracking-wider text-amber-900">
                                 Order #{currentOrder.id.length > 8 ? currentOrder.id.slice(-6).toUpperCase() : currentOrder.id}
                               </span>
                               <select
                                 value={currentOrder.status}
+                                onClick={(e) => e.stopPropagation()}
                                 onChange={(e) => handleUpdateOrderStatusAction(currentOrder.id, e.target.value)}
                                 className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider border cursor-pointer focus:outline-none ${
                                   currentOrder.status === 'PLACED' ? 'bg-blue-100 text-blue-900 border-blue-300' :
@@ -2553,7 +2154,7 @@ export default function HotelOwnerDashboard() {
                             </div>
 
                             {/* Ordered Items List */}
-                            <div className="space-y-1.5 my-2 max-h-28 overflow-y-auto pr-1">
+                            <div className="space-y-1.5 my-2 max-h-24 overflow-y-auto pr-1">
                               {currentOrder.items && currentOrder.items.length > 0 ? (
                                 currentOrder.items.map((item, idx) => (
                                   <div key={idx} className="flex justify-between items-center text-xs text-slate-800">
@@ -2574,21 +2175,38 @@ export default function HotelOwnerDashboard() {
                             {/* Bill Total */}
                             <div className="flex justify-between items-center pt-2 border-t border-amber-200/80 mt-2">
                               <span className="text-slate-600 font-bold text-[11px] uppercase tracking-wider">Bill Total:</span>
-                              <span className="text-base font-black text-amber-950">
+                              <span className="text-base font-black text-amber-950 font-mono">
                                 {currencySymbol}{orderTotal.toFixed(2)}
                               </span>
                             </div>
                           </div>
                         ) : (
-                          <div className="my-3 p-3.5 rounded-xl bg-amber-50/50 border border-amber-200/60 text-xs text-amber-900 font-medium">
+                          <div 
+                            onClick={() => navigate(`/tables/${table.number}/order`)}
+                            className="my-3 p-3.5 rounded-xl bg-amber-50/50 border border-amber-200/60 text-xs text-amber-900 font-medium cursor-pointer hover:bg-amber-100/50 transition-colors"
+                          >
                             <div className="flex items-center gap-1.5 mb-1 font-bold text-amber-800 text-[11px]">
-                              <span>●</span> Guests Seated (Occupied)
+                              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" /> Guests Seated (Occupied)
                             </div>
-                            <p className="text-[11px] text-slate-500">Awaiting kitchen order placement</p>
+                            <p className="text-[11px] text-slate-500">Click to open dedicated order screen & take order</p>
                           </div>
                         )
+                      ) : isReserved ? (
+                        <div 
+                          onClick={() => navigate(`/tables/${table.number}/order`)}
+                          className="my-3 p-3.5 rounded-xl bg-blue-50/60 border border-blue-200/60 text-xs text-blue-900 font-medium cursor-pointer hover:bg-blue-100/50 transition-colors"
+                        >
+                          <div className="flex items-center gap-1.5 mb-1 font-bold text-blue-800 text-[11px]">
+                            <span className="w-2 h-2 rounded-full bg-blue-500" /> Reserved for Guests
+                          </div>
+                          <p className="text-[11px] text-slate-500">Click to open order screen or seat guests</p>
+                        </div>
                       ) : (
-                        <div className="my-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200/60 text-xs text-slate-400 font-medium text-center">
+                        <div 
+                          onClick={() => navigate(`/tables/${table.number}/order`)}
+                          className="my-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200/60 text-xs text-slate-400 font-medium text-center cursor-pointer hover:bg-emerald-50/50 hover:border-emerald-200 hover:text-emerald-800 transition-all"
+                        >
+                          <CheckCircle2 className="w-4 h-4 mx-auto mb-1 text-emerald-500" />
                           Table is clean & ready for guests
                         </div>
                       )}
@@ -2598,33 +2216,26 @@ export default function HotelOwnerDashboard() {
                     <div className="pt-3 border-t border-slate-100 flex flex-col gap-2">
                       {isOccupied ? (
                         <div className="flex items-center gap-1.5">
-                          {currentOrder ? (
-                            <button
-                              onClick={() => handleOpenAddItems(currentOrder, table.number)}
-                              className="flex-1 py-2 px-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-black flex items-center justify-center gap-1 transition-colors cursor-pointer border border-amber-300 shadow-xs"
-                              title="Add more items to this order"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                              <span>Add Items</span>
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleOpenNewOrder(table.number)}
-                              className="flex-1 py-2 px-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-xs"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                              <span>Take Order</span>
-                            </button>
-                          )}
+                          <button
+                            onClick={() => navigate(`/tables/${table.number}/order`)}
+                            className="flex-1 py-2 px-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                            title="Open dedicated order management screen"
+                          >
+                            <UtensilsCrossed className="w-3.5 h-3.5" />
+                            <span>{currentOrder ? 'Order Screen' : 'Take Order'}</span>
+                          </button>
+
                           {currentOrder && (
                             <button
                               onClick={() => handleSettleOrder(currentOrder, table.number)}
-                              className="flex-1 py-2 px-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-xs"
+                              className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-xs"
+                              title="Generate Bill & Settle"
                             >
                               <Receipt className="w-3.5 h-3.5" />
                               <span>Settle</span>
                             </button>
                           )}
+
                           <button
                             onClick={() => handleFreeTableAction(table.number)}
                             className="py-2 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-bold transition-colors cursor-pointer"
@@ -2636,11 +2247,18 @@ export default function HotelOwnerDashboard() {
                       ) : (
                         <div className="flex items-center justify-between w-full gap-2">
                           <button
-                            onClick={() => handleOpenNewOrder(table.number)}
+                            onClick={() => navigate(`/tables/${table.number}/order`)}
                             className="flex-1 py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
                           >
                             <Plus className="w-3.5 h-3.5" />
                             <span>Take Order</span>
+                          </button>
+                          <button
+                            onClick={() => window.open(`/tables/${table.number}/order`, '_blank')}
+                            className="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
+                            title="Open in new tab"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => handleDeleteTableAction(table.number)}
@@ -2660,149 +2278,9 @@ export default function HotelOwnerDashboard() {
         )}
 
         {/* ─────────────────────────────────────────────────────────── */}
-        {/* TAB: LIVE KITCHEN ORDERS / KDS                              */}
-        {/* ─────────────────────────────────────────────────────────── */}
-        {activeTab === 'live-orders' && (
-          <div className="p-8 space-y-6 animate-fade-in">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h3 className="text-xl font-black text-slate-900">Live Kitchen Orders & KDS</h3>
-                <p className="text-xs text-slate-500">Real-time status tracking from guest order placement to kitchen fulfillment</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <a
-                  href="/kitchen"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all flex items-center gap-1.5 no-underline"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Open Full Kitchen Display (KDS) ↗</span>
-                </a>
-              </div>
-            </div>
-
-            {/* Filter Tabs */}
-            <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
-              {['ALL', 'PLACED', 'PREPARING', 'SERVED'].map(st => {
-                const count = st === 'ALL' 
-                  ? displayedOrders.filter(o => o.status !== 'PAID').length 
-                  : displayedOrders.filter(o => o.status === st).length;
-                return (
-                  <button
-                    key={st}
-                    onClick={() => setOrderStatusFilter(st)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                      orderStatusFilter === st
-                        ? 'bg-amber-600 text-white shadow-sm'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    {st} ({count})
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Orders Grid */}
-            {displayedOrders.filter(o => o.status !== 'PAID' && (orderStatusFilter === 'ALL' || o.status === orderStatusFilter)).length === 0 ? (
-              <div className="p-12 text-center bg-white rounded-2xl border border-slate-200">
-                <ChefHat className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                <h4 className="text-sm font-bold text-slate-700">No active orders in this queue</h4>
-                <p className="text-xs text-slate-400 mt-1">New guest orders placed via dining tables or room service will appear here instantly.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {displayedOrders
-                  .filter(o => o.status !== 'PAID' && (orderStatusFilter === 'ALL' || o.status === orderStatusFilter))
-                  .map(order => {
-                    const subtotal = order.items?.reduce((s, i) => s + (i.price * i.quantity), 0) || 0;
-                    return (
-                      <div key={order.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col justify-between">
-                        <div>
-                          <div className="flex justify-between items-center mb-3">
-                            <div className="flex items-center gap-2">
-                              <span className="px-2 py-1 rounded-lg bg-slate-900 text-white text-xs font-black">
-                                Table {order.tableNumber}
-                              </span>
-                              <span className="text-[11px] font-mono text-slate-400">#{order.id.slice(-6)}</span>
-                            </div>
-                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                              order.status === 'PLACED' ? 'bg-blue-100 text-blue-800' :
-                              order.status === 'PREPARING' ? 'bg-amber-100 text-amber-800' :
-                              'bg-emerald-100 text-emerald-800'
-                            }`}>
-                              {order.status}
-                            </span>
-                          </div>
-
-                          {/* Order Items */}
-                          <div className="divide-y divide-slate-100 my-3">
-                            {order.items?.map((item, idx) => (
-                              <div key={idx} className="py-1.5 flex justify-between items-center text-xs">
-                                <span className="font-bold text-slate-800">
-                                  <span className="text-amber-700 mr-1.5 font-black">{item.quantity}×</span>
-                                  {item.name}
-                                </span>
-                                <span className="font-mono text-slate-600">{currencySymbol}{(item.price * item.quantity).toFixed(2)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="pt-3 border-t border-slate-100">
-                          <div className="flex justify-between items-center mb-3 font-bold">
-                            <span className="text-xs text-slate-500">Total:</span>
-                            <span className="text-sm font-black text-slate-900">{currencySymbol}{subtotal.toFixed(2)}</span>
-                          </div>
-
-                          {/* Workflow buttons */}
-                          <div className="flex items-center gap-2">
-                            {order.status === 'PLACED' && (
-                              <button
-                                onClick={() => {
-                                  updateOrderStatus(order.id, 'PREPARING');
-                                  showToast(`Order #${order.id.slice(-6)} marked Preparing`);
-                                }}
-                                className="flex-1 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all cursor-pointer"
-                              >
-                                Start Preparing
-                              </button>
-                            )}
-                            {order.status === 'PREPARING' && (
-                              <button
-                                onClick={() => {
-                                  updateOrderStatus(order.id, 'SERVED');
-                                  showToast(`Order #${order.id.slice(-6)} marked Served`);
-                                }}
-                                className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all cursor-pointer"
-                              >
-                                Mark as Served
-                              </button>
-                            )}
-                            {order.status === 'SERVED' && (
-                              <button
-                                onClick={() => handleSettleOrder(order, order.tableNumber)}
-                                className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                              >
-                                <Receipt className="w-3.5 h-3.5" />
-                                <span>Settle & Print Bill</span>
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ─────────────────────────────────────────────────────────── */}
         {/* TAB: RESTAURANT MENU & BESTSELLERS                          */}
         {/* ─────────────────────────────────────────────────────────── */}
-        {activeTab === 'dining-menu' && (
+        {(activeTab === 'menu-management' || activeTab === 'dining-menu') && (
           <div className="p-8 space-y-6 animate-fade-in">
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -3269,7 +2747,1574 @@ export default function HotelOwnerDashboard() {
 
 
 
-      {/* ── ADD TABLE MODAL ── */}
+      
+        {/* ─────────────────────────────────────────────────────────── */}
+        {/* TAB 5: SALES & BILLING (Settled Invoices & Daily Reports)    */}
+        {/* ─────────────────────────────────────────────────────────── */}
+        {(activeTab === 'sales-billing' || activeTab === 'financials') && (
+          <div className="p-6 sm:p-8 space-y-6 animate-fade-in">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Sales & Billing Ledger</h3>
+                <p className="text-xs text-slate-500">Settled restaurant bills, tax liabilities, and receipt reprinting</p>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={() => {
+                    const settled = displayedOrders.filter(o => o.status === 'PAID' || o.status === 'COMPLETED');
+                    let csv = "Invoice ID,Date,Table,Items Count,Total Amount,Status\n";
+                    settled.forEach(o => {
+                      const tot = o.items?.reduce((s, i) => s + (i.price * i.quantity), 0) || o.totalPrice || 0;
+                      csv += `${o.id.slice(-6)},${(o.created_at || o.createdAt || '').slice(0, 10)},Table ${o.tableNumber || o.table_number},${o.items?.length || 1},${tot},${o.status}\n`;
+                    });
+                    const blob = new Blob([csv], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `dining-sales-ledger.csv`;
+                    a.click();
+                    showToast('Exported settled sales ledger to CSV');
+                  }}
+                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Export Sales CSV</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Sales Summary Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Today's Dining Sales</span>
+                <span className="text-2xl font-black text-slate-900">{currencySymbol}{(diningDashboardData?.metrics?.todaySales || 0).toLocaleString()}</span>
+                <p className="text-[11px] text-emerald-600 font-bold mt-1">Invoiced at tables today</p>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Settled Invoices</span>
+                <span className="text-2xl font-black text-indigo-600">
+                  {displayedOrders.filter(o => o.status === 'PAID' || o.status === 'COMPLETED').length}
+                </span>
+                <p className="text-[11px] text-slate-500 mt-1">Fully paid receipts</p>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Gross Cumulative Sales</span>
+                <span className="text-2xl font-black text-emerald-600">
+                  {currencySymbol}{displayedOrders.reduce((sum, o) => {
+                    const t = o.items?.reduce((s, i) => s + (i.price * i.quantity), 0) || o.totalPrice || 0;
+                    return sum + parseFloat(t);
+                  }, 0).toLocaleString()}
+                </span>
+                <p className="text-[11px] text-slate-500 mt-1">All table orders ledger</p>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Active Unsettled Bills</span>
+                <span className="text-2xl font-black text-amber-600">
+                  {currencySymbol}{displayedOrders.filter(o => o.status !== 'PAID' && o.status !== 'COMPLETED').reduce((sum, o) => {
+                    const t = o.items?.reduce((s, i) => s + (i.price * i.quantity), 0) || o.totalPrice || 0;
+                    return sum + parseFloat(t);
+                  }, 0).toLocaleString()}
+                </span>
+                <p className="text-[11px] text-amber-700 mt-1">Dining in progress</p>
+              </div>
+            </div>
+
+            {/* Settled Bills History Table */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">Invoices & Settlement History</h4>
+                <span className="text-xs text-slate-400">Click any row to print or inspect bill</span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-3 px-4">Invoice #</th>
+                      <th className="py-3 px-4">Table</th>
+                      <th className="py-3 px-4">Dishes & Quantity</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4">Amount</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {displayedOrders.map(order => {
+                      const total = order.items?.reduce((s, i) => s + (i.price * i.quantity), 0) || order.totalPrice || 0;
+                      const isPaid = order.status === 'PAID' || order.status === 'COMPLETED';
+
+                      return (
+                        <tr key={order.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3.5 px-4 font-mono font-bold text-slate-900">#{order.id.slice(-6)}</td>
+                          <td className="py-3.5 px-4">
+                            <span className="px-2 py-0.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 font-black">
+                              Table {order.tableNumber || order.table_number}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-700 max-w-sm">
+                            <span className="truncate block">
+                              {order.items?.map(i => `${i.quantity}x ${i.name || i.item_name}`).join(', ') || 'Dining Meal'}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                              isPaid ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              {order.status}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 font-black text-slate-900">{currencySymbol}{parseFloat(total).toFixed(2)}</td>
+                          <td className="py-3.5 px-4 text-right">
+                            <button
+                              onClick={() => {
+                                setBillingOrder(order);
+                                setBillingTableNumber(order.tableNumber || order.table_number);
+                              }}
+                              className="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1"
+                            >
+                              <Printer className="w-3.5 h-3.5 text-slate-600" />
+                              <span>Print Bill</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─────────────────────────────────────────────────────────── */}
+        {/* TAB 6: RESTAURANT EXPENSES                                   */}
+        {/* ─────────────────────────────────────────────────────────── */}
+        {activeTab === 'expenses' && (
+          <div className="p-6 sm:p-8 space-y-6 animate-fade-in">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Restaurant Expense Tracker</h3>
+                <p className="text-xs text-slate-500">Record purchases: meat, poultry, dairy, produce, LPG fuel, and wages</p>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={() => setShowAddExpenseModal(true)}
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Record New Expense</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Expense KPI Summary Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-white p-5 rounded-2xl border border-rose-200 bg-rose-50/20 shadow-sm">
+                <span className="text-[10px] uppercase font-bold text-rose-700 block mb-1">Total Recorded Expenses</span>
+                <span className="text-2xl font-black text-rose-600">{currencySymbol}{totalExpensesAmount.toLocaleString()}</span>
+                <p className="text-[11px] text-slate-500 mt-1">{expensesList.length} expense vouchers</p>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Top Expense Category</span>
+                <span className="text-xl font-black text-slate-900">
+                  {Object.entries(expenseCategories).sort((a,b) => b[1] - a[1])[0]?.[0] || 'No expenses recorded'}
+                </span>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  {currencySymbol}{(Object.entries(expenseCategories).sort((a,b) => b[1] - a[1])[0]?.[1] || 0).toLocaleString()}
+                </p>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Raw Food (COGS)</span>
+                <span className="text-2xl font-black text-amber-600">
+                  {currencySymbol}{(
+                    (expenseCategories['Meat & Poultry'] || 0) + 
+                    (expenseCategories['Vegetables'] || 0) + 
+                    (expenseCategories['Dairy'] || 0) +
+                    (expenseCategories['Raw Materials / Groceries'] || 0)
+                  ).toLocaleString()}
+                </span>
+                <p className="text-[11px] text-slate-500 mt-1">Direct food costs</p>
+              </div>
+            </div>
+
+            {/* Filter Bar */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-slate-400" />
+                <span className="text-xs font-bold text-slate-600">Category Filter:</span>
+                <select
+                  value={expenseCategoryFilter}
+                  onChange={e => setExpenseCategoryFilter(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold bg-white text-slate-700 focus:outline-none focus:border-amber-600 cursor-pointer"
+                >
+                  <option value="ALL">All Categories</option>
+                  <option value="Meat & Poultry">Meat & Poultry</option>
+                  <option value="Vegetables">Vegetables</option>
+                  <option value="Dairy">Dairy</option>
+                  <option value="Raw Materials / Groceries">Raw Materials / Groceries</option>
+                  <option value="Gas & Utilities">Gas & Utilities</option>
+                  <option value="Staff Wages">Staff Wages</option>
+                  <option value="Maintenance">Maintenance</option>
+                </select>
+              </div>
+
+              <span className="text-xs text-slate-500 font-medium">Showing {expensesList.length} expenses</span>
+            </div>
+
+            {/* Expense Records Table */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-3 px-4">Date</th>
+                      <th className="py-3 px-4">Title & Details</th>
+                      <th className="py-3 px-4">Category</th>
+                      <th className="py-3 px-4">Payment Method</th>
+                      <th className="py-3 px-4">Amount</th>
+                      <th className="py-3 px-4 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {expensesList.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" className="py-8 text-center text-slate-400 font-medium">
+                          No expenses recorded yet. Click "Record New Expense" to add your first expense voucher.
+                        </td>
+                      </tr>
+                    ) : (
+                      expensesList.map(exp => (
+                        <tr key={exp.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3.5 px-4 font-mono text-slate-600">{exp.expense_date || exp.expenseDate || exp.created_at?.slice(0, 10)}</td>
+                          <td className="py-3.5 px-4">
+                            <span className="font-bold text-slate-900 block">{exp.title}</span>
+                            {exp.notes && <span className="text-[10px] text-slate-400 block">{exp.notes}</span>}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-800">
+                              {exp.category}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="font-mono text-xs font-bold text-slate-600">{exp.payment_method || exp.paymentMethod}</span>
+                          </td>
+                          <td className="py-3.5 px-4 font-black text-rose-600">{currencySymbol}{parseFloat(exp.amount).toFixed(2)}</td>
+                          <td className="py-3.5 px-4 text-right">
+                            <button
+                              onClick={() => handleDeleteExpenseAction(exp.id)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                              title="Delete Expense"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─────────────────────────────────────────────────────────── */}
+        {/* TAB 7: PROFIT & LOSS REPORTS                                 */}
+        {/* ─────────────────────────────────────────────────────────── */}
+        {activeTab === 'profit-loss' && (
+          <div className="p-6 sm:p-8 space-y-6 animate-fade-in">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Restaurant Profit & Loss Reports</h3>
+                <p className="text-xs text-slate-500">Revenue vs Raw Food COGS vs Operating Expenses = Net Profit Margin</p>
+              </div>
+
+              <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+                {['daily', 'weekly', 'monthly'].map(p => (
+                  <button
+                    key={p}
+                    onClick={() => setPlPeriod(p)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all cursor-pointer ${
+                      plPeriod === p ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* P&L Top Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Operating Revenue</span>
+                <span className="text-2xl font-black text-slate-900">{currencySymbol}{(plReportData?.totalRevenue || 0).toLocaleString()}</span>
+                <p className="text-[11px] text-emerald-600 font-bold mt-1">Confirmed food sales</p>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Cost of Goods Sold (COGS)</span>
+                <span className="text-2xl font-black text-rose-600">{currencySymbol}{(plReportData?.cogs || 0).toLocaleString()}</span>
+                <p className="text-[11px] text-slate-500 mt-1">Raw meat, produce & groceries</p>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Gross Profit</span>
+                <span className="text-2xl font-black text-blue-600">{currencySymbol}{(plReportData?.grossProfit || 0).toLocaleString()}</span>
+                <p className="text-[11px] text-blue-600 font-bold mt-1">
+                  Margin: {plReportData?.grossMarginPercent || 0}%
+                </p>
+              </div>
+
+              <div className={`p-5 rounded-2xl border shadow-sm ${
+                (plReportData?.netProfit || 0) >= 0 ? 'bg-emerald-50/30 border-emerald-300' : 'bg-rose-50/30 border-rose-300'
+              }`}>
+                <span className="text-[10px] uppercase font-bold text-slate-600 block mb-1">Net Profit / (Loss)</span>
+                <span className={`text-2xl font-black ${(plReportData?.netProfit || 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                  {currencySymbol}{(plReportData?.netProfit || 0).toLocaleString()}
+                </span>
+                <p className={`text-[11px] font-bold mt-1 ${(plReportData?.netProfit || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  Net Margin: {plReportData?.netMarginPercent || 0}%
+                </p>
+              </div>
+            </div>
+
+            {/* Financial Statement Table */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 border-b border-slate-100 pb-3">
+                Income Statement Breakdown ({plPeriod.toUpperCase()})
+              </h4>
+
+              <div className="space-y-3 divide-y divide-slate-100 text-xs">
+                {/* Revenue */}
+                <div className="pt-2 flex justify-between items-center font-bold text-slate-900">
+                  <span>1. Gross Restaurant Revenue (Food & Dining)</span>
+                  <span className="font-mono text-sm">{currencySymbol}{(plReportData?.totalRevenue || 0).toFixed(2)}</span>
+                </div>
+
+                {/* COGS */}
+                <div className="pt-3 flex justify-between items-center text-slate-700">
+                  <span className="pl-4">Less: Cost of Goods Sold (Meat, Veg, Dairy, Spices)</span>
+                  <span className="font-mono text-rose-600 font-bold">−{currencySymbol}{(plReportData?.cogs || 0).toFixed(2)}</span>
+                </div>
+
+                {/* Gross Profit */}
+                <div className="pt-3 flex justify-between items-center font-black text-slate-900 bg-slate-50 p-2.5 rounded-xl">
+                  <span>Gross Operating Profit</span>
+                  <span className="font-mono text-sm text-blue-700">{currencySymbol}{(plReportData?.grossProfit || 0).toFixed(2)}</span>
+                </div>
+
+                {/* Operating Expenses */}
+                <div className="pt-3 flex justify-between items-center text-slate-700">
+                  <span className="pl-4">Less: Operating Expenses (Gas/LPG, Utilities, Salaries, Maintenance)</span>
+                  <span className="font-mono text-rose-600 font-bold">−{currencySymbol}{(plReportData?.operatingExpenses || 0).toFixed(2)}</span>
+                </div>
+
+                {/* Net Profit */}
+                <div className={`pt-3 flex justify-between items-center font-black p-3 rounded-xl ${
+                  (plReportData?.netProfit || 0) >= 0 ? 'bg-emerald-50 text-emerald-900' : 'bg-rose-50 text-rose-900'
+                }`}>
+                  <span className="text-sm">Net Profit / (Loss)</span>
+                  <span className="font-mono text-base font-black">
+                    {currencySymbol}{(plReportData?.netProfit || 0).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+{/* TAB 7: STAFF MANAGEMENT & DAILY ATTENDANCE                  */}
+        {/* ─────────────────────────────────────────────────────────── */}
+        {(activeTab === 'staff-attendance' || activeTab === 'staff') && (
+          <div className="p-6 sm:p-8 space-y-6 animate-fade-in">
+            {/* Main Header with Sub-tabs and Registration */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Hotel Staff & Daily Operations</h3>
+                <p className="text-xs text-slate-500">Track daily employee attendance, shifts, leave records, and team roster</p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {/* View Switcher Pills */}
+                <div className="flex p-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setStaffSubTab('attendance')}
+                    className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                      staffSubTab === 'attendance'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <CalendarCheck className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Daily Attendance</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStaffSubTab('directory')}
+                    className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                      staffSubTab === 'directory'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Staff Directory</span>
+                  </button>
+                </div>
+
+                {(isSuperAdmin || hasPermission('STAFF', 'can_add')) && (
+                  <button
+                    onClick={() => setShowAddStaffModal(true)}
+                    className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Register Staff</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* ── SUB-TAB 1: DAILY ATTENDANCE MANAGEMENT ── */}
+            {staffSubTab === 'attendance' && (
+              <div className="space-y-6">
+                {/* Date Controls & Filter Bar */}
+                <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  {/* Left: Interactive Date Navigator */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => handleShiftAttendanceDay(-1)}
+                        className="p-1.5 rounded-lg hover:bg-white text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+                        title="Previous Day"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      <input
+                        type="date"
+                        value={attendanceDate}
+                        onChange={e => setAttendanceDate(e.target.value)}
+                        className="px-2 py-1 text-xs font-black text-slate-900 bg-transparent focus:outline-none cursor-pointer"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleShiftAttendanceDay(1)}
+                        className="p-1.5 rounded-lg hover:bg-white text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+                        title="Next Day"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleSetAttendanceToday}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                        attendanceDate === new Date().toISOString().split('T')[0]
+                          ? 'bg-amber-50 text-amber-800 border-amber-300 font-black'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      Today
+                    </button>
+
+                    <div className="text-xs font-bold text-slate-500 hidden sm:block pl-1">
+                      {new Date(attendanceDate + 'T00:00:00').toLocaleDateString('en-US', {
+                        weekday: 'short',
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Right: Quick Batch Actions & Search */}
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {/* Shift Filter Pills */}
+                    <div className="flex p-0.5 rounded-xl bg-slate-100 border border-slate-200 text-[11px] font-bold">
+                      {['ALL', 'MORNING', 'EVENING', 'NIGHT'].map(sh => (
+                        <button
+                          key={sh}
+                          type="button"
+                          onClick={() => setStaffShiftFilter(sh)}
+                          className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                            staffShiftFilter === sh
+                              ? 'bg-white text-slate-900 shadow-xs font-black'
+                              : 'text-slate-500 hover:text-slate-900'
+                          }`}
+                        >
+                          {sh === 'ALL' ? 'All Shifts' : sh}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Search */}
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={staffSearchQuery}
+                        onChange={e => setStaffSearchQuery(e.target.value)}
+                        placeholder="Filter by name / role..."
+                        className="w-44 sm:w-52 pl-8 pr-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-amber-500"
+                      />
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                    </div>
+
+                    {/* Mark All Present Button */}
+                    <button
+                      type="button"
+                      onClick={handleBatchMarkAllPresent}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all flex items-center gap-1 cursor-pointer shadow-xs"
+                      title="Quickly mark all active staff as Present for this day"
+                    >
+                      <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                      <span>Mark All Present</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Daily Attendance Summary Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3.5">
+                  {/* Total Staff */}
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold">
+                      <Users className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Staff</span>
+                      <span className="text-xl font-black text-slate-900">{attendanceSummary.totalStaff}</span>
+                    </div>
+                  </div>
+
+                  {/* Present */}
+                  <div className="bg-white p-4 rounded-2xl border border-emerald-200 bg-emerald-50/30 shadow-xs flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                      <Check className="w-5 h-5 stroke-[2.5]" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">Present</span>
+                      <span className="text-xl font-black text-emerald-700">{attendanceSummary.present}</span>
+                    </div>
+                  </div>
+
+                  {/* Absent */}
+                  <div className="bg-white p-4 rounded-2xl border border-rose-200 bg-rose-50/30 shadow-xs flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold">
+                      <X className="w-5 h-5 stroke-[2.5]" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider block">Absent</span>
+                      <span className="text-xl font-black text-rose-700">{attendanceSummary.absent}</span>
+                    </div>
+                  </div>
+
+                  {/* Half Day */}
+                  <div className="bg-white p-4 rounded-2xl border border-amber-200 bg-amber-50/30 shadow-xs flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
+                      <Clock className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">Half Day</span>
+                      <span className="text-xl font-black text-amber-800">{attendanceSummary.halfDay}</span>
+                    </div>
+                  </div>
+
+                  {/* On Leave */}
+                  <div className="bg-white p-4 rounded-2xl border border-purple-200 bg-purple-50/30 shadow-xs flex items-center gap-3 col-span-2 sm:col-span-1">
+                    <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                      <Calendar className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider block">On Leave</span>
+                      <span className="text-xl font-black text-purple-800">{attendanceSummary.leave}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Staff Attendance List */}
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black uppercase tracking-wider text-slate-700">Staff Attendance Roster</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700">
+                        {filteredStaffAttendance.length} staff
+                      </span>
+                    </div>
+                    {attendanceSummary.unmarked > 0 && (
+                      <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+                        ⚠️ {attendanceSummary.unmarked} staff pending attendance for today
+                      </span>
+                    )}
+                  </div>
+
+                  {filteredStaffAttendance.length === 0 ? (
+                    <div className="p-12 text-center text-slate-400 text-xs font-medium">
+                      No staff members match the selected filters.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {filteredStaffAttendance.map(member => {
+                        const status = member.attendance_status;
+                        const isPresent = status === 'PRESENT';
+                        const isAbsent = status === 'ABSENT';
+                        const isHalfDay = status === 'HALF_DAY';
+                        const isLeave = status === 'LEAVE';
+                        const isUnmarked = !status || status === 'UNMARKED';
+
+                        return (
+                          <div
+                            key={member.staff_id || member.id}
+                            className={`p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors hover:bg-slate-50/70 ${
+                              isAbsent ? 'bg-rose-50/20' : isPresent ? 'bg-emerald-50/15' : ''
+                            }`}
+                          >
+                            {/* Staff Member Info */}
+                            <div className="flex items-center gap-3.5 min-w-[240px]">
+                              <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-black text-sm shrink-0 border ${
+                                member.shift === 'MORNING' ? 'bg-amber-50 border-amber-200 text-amber-800' :
+                                member.shift === 'EVENING' ? 'bg-indigo-50 border-indigo-200 text-indigo-800' :
+                                'bg-slate-100 border-slate-300 text-slate-800'
+                              }`}>
+                                {member.name ? member.name.charAt(0).toUpperCase() : 'S'}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <h4 className="text-sm font-black text-slate-900">{member.name}</h4>
+                                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
+                                    member.shift === 'MORNING' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                    member.shift === 'EVENING' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                                    'bg-slate-100 text-slate-700 border-slate-200'
+                                  }`}>
+                                    {member.shift || 'MORNING'}
+                                  </span>
+                                </div>
+                                <p className="text-xs font-semibold text-slate-500 mt-0.5">{member.role}</p>
+                                <p className="text-[11px] font-mono text-slate-400 mt-0.5">
+                                  {member.phone || member.email || 'No contact specified'}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Current Status Badge */}
+                            <div className="flex items-center gap-2 min-w-[130px]">
+                              {isPresent && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                                  Present
+                                </span>
+                              )}
+                              {isAbsent && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-800 border border-rose-300">
+                                  <span className="w-2 h-2 rounded-full bg-rose-500" />
+                                  Absent
+                                </span>
+                              )}
+                              {isHalfDay && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-900 border border-amber-300">
+                                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                                  Half Day
+                                </span>
+                              )}
+                              {isLeave && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-purple-100 text-purple-900 border border-purple-300">
+                                  <span className="w-2 h-2 rounded-full bg-purple-500" />
+                                  On Leave
+                                </span>
+                              )}
+                              {isUnmarked && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500 border border-dashed border-slate-300">
+                                  <span className="w-2 h-2 rounded-full bg-slate-400" />
+                                  Unmarked
+                                </span>
+                              )}
+                              {member.notes && (
+                                <span className="text-[10px] text-slate-400 italic truncate max-w-[120px]" title={member.notes}>
+                                  "{member.notes}"
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Quick Attendance Marking Actions */}
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {/* Quick 1-Click Present */}
+                              <button
+                                type="button"
+                                onClick={() => handleMarkAttendance(member, 'PRESENT')}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1 cursor-pointer border ${
+                                  isPresent
+                                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                                    : 'bg-white hover:bg-emerald-50 text-emerald-700 border-slate-200 hover:border-emerald-300'
+                                }`}
+                                title="Mark Present"
+                              >
+                                <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                                <span>Present</span>
+                              </button>
+
+                              {/* Quick 1-Click Absent */}
+                              <button
+                                type="button"
+                                onClick={() => handleMarkAttendance(member, 'ABSENT')}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1 cursor-pointer border ${
+                                  isAbsent
+                                    ? 'bg-rose-600 text-white border-rose-700 shadow-xs'
+                                    : 'bg-white hover:bg-rose-50 text-rose-700 border-slate-200 hover:border-rose-300'
+                                }`}
+                                title="Mark Absent"
+                              >
+                                <X className="w-3.5 h-3.5 stroke-[2.5]" />
+                                <span>Absent</span>
+                              </button>
+
+                              {/* Dropdown for Half Day / Leave / Edit */}
+                              <select
+                                value={status === 'UNMARKED' ? '' : status}
+                                onChange={e => {
+                                  if (e.target.value) {
+                                    handleMarkAttendance(member, e.target.value);
+                                  }
+                                }}
+                                className="px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:border-slate-300 cursor-pointer focus:outline-none"
+                              >
+                                <option value="" disabled>Status ▾</option>
+                                <option value="PRESENT">Present</option>
+                                <option value="ABSENT">Absent</option>
+                                <option value="HALF_DAY">Half Day</option>
+                                <option value="LEAVE">Leave</option>
+                              </select>
+
+                              {/* Monthly History Button */}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenMonthlyHistory(member)}
+                                className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                                title="View monthly attendance history"
+                              >
+                                <CalendarDays className="w-3.5 h-3.5 text-slate-600" />
+                                <span>History</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── SUB-TAB 2: STAFF DIRECTORY ROSTER ── */}
+            {staffSubTab === 'directory' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {staff.map((s) => (
+                  <div key={s.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div>
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center font-bold text-amber-700 text-sm">
+                          {s.name.charAt(0)}
+                        </div>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          {s.status}
+                        </span>
+                      </div>
+                      <h4 className="text-base font-black text-slate-900">{s.name}</h4>
+                      <p className="text-xs font-bold text-amber-600 mb-2">{s.role}</p>
+                      <div className="text-xs text-slate-500 space-y-0.5 pt-2 border-t border-slate-100">
+                        <p>Shift: <strong className="text-slate-700">{s.shift}</strong></p>
+                        <p className="font-mono text-[11px]">{s.email || s.phone || 'No direct contact'}</p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleOpenMonthlyHistory(s)}
+                      className="w-full mt-4 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <CalendarDays className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Monthly Attendance</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─────────────────────────────────────────────────────────── */}
+        
+        {/* ─────────────────────────────────────────────────────────── */}
+        {/* TAB 9: INVENTORY MANAGEMENT                                  */}
+        {/* ─────────────────────────────────────────────────────────── */}
+        {activeTab === 'inventory-management' && (
+          <div className="p-6 sm:p-8 space-y-6 animate-fade-in">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Kitchen Inventory & Stock Levels</h3>
+                <p className="text-xs text-slate-500">Track key ingredients, LPG cylinders, minimum thresholds, and stock valuation</p>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={() => setShowAddInventoryModal(true)}
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Stock Item</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Total Tracked Items</span>
+                <span className="text-2xl font-black text-slate-900">{inventoryStats.totalItems}</span>
+                <p className="text-[11px] text-slate-500 mt-1">Ingredients & fuel units</p>
+              </div>
+
+              <div className={`p-5 rounded-2xl border shadow-sm ${
+                inventoryStats.lowStockCount > 0 ? 'bg-amber-50/40 border-amber-300' : 'bg-white border-slate-200'
+              }`}>
+                <span className="text-[10px] uppercase font-bold text-amber-800 block mb-1">Low Stock Alerts</span>
+                <span className="text-2xl font-black text-amber-700">{inventoryStats.lowStockCount}</span>
+                <p className="text-[11px] text-amber-600 font-bold mt-1">Requires immediate restocking</p>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Total Inventory Valuation</span>
+                <span className="text-2xl font-black text-emerald-600">{currencySymbol}{inventoryStats.totalValuation.toLocaleString()}</span>
+                <p className="text-[11px] text-slate-500 mt-1">Current assets on hand</p>
+              </div>
+            </div>
+
+            {/* Inventory Table */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-slate-400" />
+                  <span className="text-xs font-bold text-slate-600">Category:</span>
+                  <select
+                    value={inventoryCategoryFilter}
+                    onChange={e => setInventoryCategoryFilter(e.target.value)}
+                    className="px-3 py-1 text-xs rounded-xl border border-slate-200 bg-white font-bold text-slate-700 focus:outline-none focus:border-amber-600 cursor-pointer"
+                  >
+                    <option value="ALL">All Categories</option>
+                    <option value="Grains & Rice">Grains & Rice</option>
+                    <option value="Meat & Poultry">Meat & Poultry</option>
+                    <option value="Dairy">Dairy</option>
+                    <option value="Vegetables">Vegetables</option>
+                    <option value="Spices & Oils">Spices & Oils</option>
+                    <option value="Fuel & Gas">Fuel & Gas</option>
+                  </select>
+                </div>
+
+                <span className="text-xs text-slate-400 font-medium">Click Restock to replenish item quantity</span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-3 px-4">Item Name</th>
+                      <th className="py-3 px-4">Category</th>
+                      <th className="py-3 px-4">Current Stock</th>
+                      <th className="py-3 px-4">Min. Alert Level</th>
+                      <th className="py-3 px-4">Cost / Unit</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {inventoryList.map(item => {
+                      const isLow = item.quantity <= item.min_threshold;
+                      return (
+                        <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3.5 px-4 font-bold text-slate-900">{item.item_name || item.itemName}</td>
+                          <td className="py-3.5 px-4 text-slate-600">{item.category}</td>
+                          <td className="py-3.5 px-4 font-black text-slate-900">
+                            {item.quantity} <span className="font-normal text-slate-500">{item.unit}</span>
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-500">{item.min_threshold} {item.unit}</td>
+                          <td className="py-3.5 px-4 font-mono text-slate-700">{currencySymbol}{parseFloat(item.cost_per_unit || 0).toFixed(2)}</td>
+                          <td className="py-3.5 px-4">
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                              isLow ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                            }`}>
+                              {isLow ? 'Low Stock' : 'In Stock'}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => {
+                                  setRestockTargetItem(item);
+                                  setRestockAddQuantity('');
+                                  setShowRestockModal(true);
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold transition-all cursor-pointer"
+                              >
+                                Restock
+                              </button>
+                              <button
+                                onClick={() => handleDeleteInventoryAction(item.id)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                title="Delete Item"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─────────────────────────────────────────────────────────── */}
+        {/* ─────────────────────────────────────────────────────────── */}
+        {/* TAB 10: HOTEL ROOM MANAGEMENT (Secondary Module)          */}
+        {/* ─────────────────────────────────────────────────────────── */}
+        {(activeTab === 'hotel-rooms' || activeTab === 'bookings' || activeTab === 'rooms' || activeTab === 'customers') && (
+          <div className="p-6 sm:p-8 space-y-6 animate-fade-in">
+            {/* Notice Banner */}
+            <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200 text-blue-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 block">Secondary Hotel Operations</span>
+                <p className="text-xs font-medium mt-0.5">Hotel room reservations, room cleaning inventory, and guest CRM ledger</p>
+              </div>
+
+              {/* Sub-tab pills */}
+              <div className="flex p-1 rounded-xl bg-white border border-blue-200 text-xs font-bold self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setRoomSubTab('inventory')}
+                  className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                    roomSubTab === 'inventory' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <BedDouble className="w-3.5 h-3.5" />
+                  <span>Room Inventory</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRoomSubTab('reservations')}
+                  className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                    roomSubTab === 'reservations' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <CalendarCheck className="w-3.5 h-3.5" />
+                  <span>Reservations</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRoomSubTab('guests')}
+                  className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                    roomSubTab === 'guests' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>Guest CRM</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Sub-tab 1: Room Inventory */}
+            {roomSubTab === 'inventory' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-black uppercase tracking-wider text-slate-900">Room Inventory & Matrix</h4>
+                    <p className="text-xs text-slate-500">Live room statuses, floor allocation, and pricing</p>
+                  </div>
+                  {(isSuperAdmin || hasPermission('ROOMS', 'can_add')) && (
+                    <button
+                      onClick={() => setShowAddRoomModal(true)}
+                      className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" /> Add Room to Inventory
+                    </button>
+                  )}
+                </div>
+
+                {rooms.length === 0 ? (
+                  <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-400 font-medium text-xs">
+                    No rooms currently configured for this hotel property.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {rooms.map((r) => (
+                      <div key={r.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex justify-between items-start mb-3">
+                          <span className="text-2xl font-black text-slate-900">#{r.room_number}</span>
+                          <select
+                            value={r.status}
+                            onChange={(e) => handleUpdateRoomStatus(r.id, e.target.value)}
+                            className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border cursor-pointer ${
+                              r.status === 'AVAILABLE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                              r.status === 'OCCUPIED' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                              r.status === 'RESERVED' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                              'bg-slate-100 text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            <option value="AVAILABLE">Available</option>
+                            <option value="OCCUPIED">Occupied</option>
+                            <option value="RESERVED">Reserved</option>
+                            <option value="MAINTENANCE">Maintenance</option>
+                          </select>
+                        </div>
+
+                        <h4 className="text-sm font-bold text-slate-800 mb-0.5">{r.category}</h4>
+                        <p className="text-xs font-black text-slate-900 mb-3">
+                          {currencySymbol}{parseFloat(r.price_per_night)} <span className="text-slate-400 font-normal">/ night</span>
+                        </p>
+
+                        <div className="flex flex-wrap gap-1 pt-3 border-t border-slate-100">
+                          {(r.amenities || []).map((amenity, idx) => (
+                            <span key={idx} className="text-[10px] font-semibold bg-slate-50 text-slate-600 px-2 py-0.5 rounded border border-slate-100">
+                              {amenity}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Sub-tab 2: Reservations */}
+            {roomSubTab === 'reservations' && (
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                  <div className="relative flex-1 max-w-sm">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search guest name, booking code, room..."
+                      value={bookingSearch}
+                      onChange={e => setBookingSearch(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-amber-600"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                    {['ALL', 'CONFIRMED', 'COMPLETED', 'CANCELLED'].map(st => (
+                      <button
+                        key={st}
+                        onClick={() => setBookingStatusFilter(st)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                          bookingStatusFilter === st
+                            ? 'bg-amber-600 text-white shadow-sm font-black'
+                            : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                        }`}
+                      >
+                        {st}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  {bookings.length === 0 ? (
+                    <div className="p-12 text-center text-slate-400 font-medium text-xs">
+                      No reservations recorded.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-black tracking-wider text-[10px]">
+                          <tr>
+                            <th className="py-3.5 px-6">Booking Code</th>
+                            <th className="py-3.5 px-6">Guest Contact</th>
+                            <th className="py-3.5 px-6">Room / Category</th>
+                            <th className="py-3.5 px-6">Check-in / Check-out</th>
+                            <th className="py-3.5 px-6">Amount</th>
+                            <th className="py-3.5 px-6">Status</th>
+                            <th className="py-3.5 px-6 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {bookings.map((b) => (
+                            <tr key={b.id} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="py-4 px-6 font-mono font-bold text-slate-900">{b.booking_code}</td>
+                              <td className="py-4 px-6">
+                                <span className="font-bold text-slate-900 text-sm block">{b.guest_name}</span>
+                                <span className="text-[11px] text-slate-400">{b.guest_email || b.guest_phone || 'No direct phone'}</span>
+                              </td>
+                              <td className="py-4 px-6">
+                                <span className="font-bold text-slate-800 block">Room {b.room_number}</span>
+                                <span className="text-[11px] text-slate-400">{b.room_category}</span>
+                              </td>
+                              <td className="py-4 px-6 font-medium text-slate-700">
+                                {b.check_in.split('T')[0]} → {b.check_out.split('T')[0]}
+                              </td>
+                              <td className="py-4 px-6">
+                                <span className="font-black text-slate-900 text-sm">
+                                  {currencySymbol}{parseFloat(b.total_amount).toLocaleString()}
+                                </span>
+                                <span className="text-[10px] text-emerald-600 block font-bold">{b.payment_status}</span>
+                              </td>
+                              <td className="py-4 px-6">
+                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                  b.booking_status === 'CONFIRMED' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                                  b.booking_status === 'COMPLETED' ? 'bg-slate-100 text-slate-700 border border-slate-200' :
+                                  'bg-rose-50 text-rose-700 border border-rose-200'
+                                }`}>
+                                  {b.booking_status}
+                                </span>
+                              </td>
+                              <td className="py-4 px-6 text-right space-x-1.5">
+                                {b.booking_status === 'CONFIRMED' && (
+                                  <>
+                                    <button
+                                      onClick={() => handleUpdateBookingStatus(b.id, 'COMPLETED')}
+                                      className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold text-[11px] transition-colors cursor-pointer"
+                                    >
+                                      Check-out
+                                    </button>
+                                    <button
+                                      onClick={() => handleUpdateBookingStatus(b.id, 'CANCELLED')}
+                                      className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold text-[11px] transition-colors cursor-pointer"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Sub-tab 3: Guest CRM */}
+            {roomSubTab === 'guests' && (
+              <div className="space-y-6">
+                <div>
+                  <h4 className="text-sm font-black uppercase tracking-wider text-slate-900">Guest & Customer Directory</h4>
+                  <p className="text-xs text-slate-500">Historical guest profile, contact details, and lifetime spending</p>
+                </div>
+
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  {customers.length === 0 ? (
+                    <div className="p-12 text-center text-slate-400 font-medium text-xs">
+                      No guest records found.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-black tracking-wider text-[10px]">
+                          <tr>
+                            <th className="py-3.5 px-6">Guest Profile</th>
+                            <th className="py-3.5 px-6">Contact Info</th>
+                            <th className="py-3.5 px-6">Total Bookings</th>
+                            <th className="py-3.5 px-6">Total Lifetime Spend</th>
+                            <th className="py-3.5 px-6">Last Visit</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {customers.map((c, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="py-4 px-6 font-bold text-slate-900 text-sm">{c.name}</td>
+                              <td className="py-4 px-6">
+                                <span className="font-semibold text-slate-800 block">{c.email || '—'}</span>
+                                <span className="text-[11px] text-slate-400 font-mono">{c.phone || '—'}</span>
+                              </td>
+                              <td className="py-4 px-6 font-bold text-slate-700">{c.totalBookings} stay{c.totalBookings === 1 ? '' : 's'}</td>
+                              <td className="py-4 px-6 font-black text-slate-900 text-sm">
+                                {currencySymbol}{c.totalSpent.toLocaleString()}
+                              </td>
+                              <td className="py-4 px-6 font-medium text-slate-500">
+                                {c.lastVisit ? c.lastVisit.split('T')[0] : 'Recent'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 8: PROPERTY SETTINGS                                    */}
+        {/* ─────────────────────────────────────────────────────────── */}
+        {activeTab === 'settings' && dashboardData && (
+          <div className="p-8 max-w-3xl space-y-6 animate-fade-in">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Hotel Property Configuration & Policies</h3>
+                <p className="text-xs text-slate-500">Manage hotel profile, contact information, tax rates, and active/inactive operational status.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleToggleHotelPropertyStatus}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 shadow-xs ${
+                    dashboardData.hotel.status === 'ACTIVE'
+                      ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                  }`}
+                  title={dashboardData.hotel.status === 'ACTIVE' ? 'Deactivate Hotel' : 'Activate Hotel'}
+                >
+                  <span className={`w-2 h-2 rounded-full ${dashboardData.hotel.status === 'ACTIVE' ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                  <span>{dashboardData.hotel.status === 'ACTIVE' ? 'Deactivate Hotel' : 'Activate Hotel'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenEditHotelModal}
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md shadow-amber-600/20"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Edit Details</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex justify-between items-center py-3 border-b border-slate-100">
+                <span className="text-xs font-bold text-slate-500 uppercase">Property Name</span>
+                <span className="text-sm font-bold text-slate-900">{dashboardData.hotel.name}</span>
+              </div>
+              <div className="flex justify-between items-center py-3 border-b border-slate-100">
+                <span className="text-xs font-bold text-slate-500 uppercase">Operational Status</span>
+                <span
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                    dashboardData.hotel.status === 'ACTIVE'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-rose-50 text-rose-700 border-rose-200'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${dashboardData.hotel.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                  {dashboardData.hotel.status === 'ACTIVE' ? 'Active & Open' : 'Inactive / Closed'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center py-3 border-b border-slate-100">
+                <span className="text-xs font-bold text-slate-500 uppercase">Public Guest Menu</span>
+                <a
+                  href={`/menu?hotel=${dashboardData.hotel.slug}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 hover:text-amber-800 bg-amber-50 px-3 py-1 rounded-lg border border-amber-200 no-underline"
+                >
+                  <span>/{dashboardData.hotel.slug}</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+              <div className="flex justify-between items-center py-3 border-b border-slate-100">
+                <span className="text-xs font-bold text-slate-500 uppercase">Concierge / Contact Phone</span>
+                <span className="text-sm font-mono font-bold text-slate-900">
+                  {dashboardData.hotel.contactPhone || '—'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center py-3 border-b border-slate-100">
+                <span className="text-xs font-bold text-slate-500 uppercase">Contact Email</span>
+                <span className="text-sm font-mono text-slate-700">
+                  {dashboardData.hotel.contactEmail || '—'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center py-3 border-b border-slate-100">
+                <span className="text-xs font-bold text-slate-500 uppercase">Settlement Currency</span>
+                <span className="text-sm font-bold text-slate-900">{dashboardData.hotel.currency} ({currencySymbol})</span>
+              </div>
+              <div className="flex justify-between items-center py-3">
+                <span className="text-xs font-bold text-slate-500 uppercase">Default Room & Dining Tax</span>
+                <span className="text-sm font-bold text-slate-900">{dashboardData.hotel.taxPercentage}%</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─────────────────────────────────────────────────────────── */}
+        
+
+
+      {/* ── RECORD RESTAURANT EXPENSE MODAL ── */}
+      {showAddExpenseModal && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowAddExpenseModal(false)}>
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Record Restaurant Expense</h3>
+                <p className="text-xs text-slate-500">Add food raw materials, LPG, or operational expense</p>
+              </div>
+              <button onClick={() => setShowAddExpenseModal(false)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 cursor-pointer">✕</button>
+            </div>
+
+            <form onSubmit={handleAddExpenseSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Expense Title / Item *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. 15kg Fresh Chicken, Commercial Gas Cylinder"
+                  value={newExpenseForm.title}
+                  onChange={e => setNewExpenseForm(prev => ({ ...prev, title: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Category *</label>
+                  <select
+                    value={newExpenseForm.category}
+                    onChange={e => setNewExpenseForm(prev => ({ ...prev, category: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600 bg-white cursor-pointer"
+                  >
+                    <option value="Meat & Poultry">Meat & Poultry</option>
+                    <option value="Vegetables">Vegetables</option>
+                    <option value="Dairy">Dairy</option>
+                    <option value="Raw Materials / Groceries">Raw Materials / Groceries</option>
+                    <option value="Gas & Utilities">Gas & Utilities</option>
+                    <option value="Staff Wages">Staff Wages</option>
+                    <option value="Maintenance">Maintenance</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Amount ({currencySymbol}) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="1"
+                    required
+                    placeholder="e.g. 3500"
+                    value={newExpenseForm.amount}
+                    onChange={e => setNewExpenseForm(prev => ({ ...prev, amount: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Payment Method</label>
+                  <select
+                    value={newExpenseForm.paymentMethod}
+                    onChange={e => setNewExpenseForm(prev => ({ ...prev, paymentMethod: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600 bg-white cursor-pointer"
+                  >
+                    <option value="UPI">UPI / GPay</option>
+                    <option value="CASH">Cash</option>
+                    <option value="CARD">Debit / Credit Card</option>
+                    <option value="BANK_TRANSFER">Bank Transfer</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Expense Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={newExpenseForm.expenseDate}
+                    onChange={e => setNewExpenseForm(prev => ({ ...prev, expenseDate: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Notes / Vendor (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Kolhapur Poultry Wholesaler"
+                  value={newExpenseForm.notes}
+                  onChange={e => setNewExpenseForm(prev => ({ ...prev, notes: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-600/20 transition-all cursor-pointer mt-4"
+              >
+                Save Expense Voucher
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── ADD INVENTORY STOCK ITEM MODAL ── */}
+      {showAddInventoryModal && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowAddInventoryModal(false)}>
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Add Kitchen Stock Item</h3>
+                <p className="text-xs text-slate-500">Track raw materials and minimum stock alerts</p>
+              </div>
+              <button onClick={() => setShowAddInventoryModal(false)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 cursor-pointer">✕</button>
+            </div>
+
+            <form onSubmit={handleAddInventorySubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Item Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Indrayani Rice, Paneer"
+                  value={newInventoryForm.itemName}
+                  onChange={e => setNewInventoryForm(prev => ({ ...prev, itemName: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Category *</label>
+                  <select
+                    value={newInventoryForm.category}
+                    onChange={e => setNewInventoryForm(prev => ({ ...prev, category: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600 bg-white cursor-pointer"
+                  >
+                    <option value="Grains & Rice">Grains & Rice</option>
+                    <option value="Meat & Poultry">Meat & Poultry</option>
+                    <option value="Dairy">Dairy</option>
+                    <option value="Vegetables">Vegetables</option>
+                    <option value="Spices & Oils">Spices & Oils</option>
+                    <option value="Fuel & Gas">Fuel & Gas</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Unit</label>
+                  <select
+                    value={newInventoryForm.unit}
+                    onChange={e => setNewInventoryForm(prev => ({ ...prev, unit: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600 bg-white cursor-pointer"
+                  >
+                    <option value="kg">kg (Kilograms)</option>
+                    <option value="liter">liter (Liters)</option>
+                    <option value="cylinder">cylinder</option>
+                    <option value="packet">packet / bundle</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Initial Quantity *</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    required
+                    placeholder="e.g. 25"
+                    value={newInventoryForm.quantity}
+                    onChange={e => setNewInventoryForm(prev => ({ ...prev, quantity: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Min. Alert Level *</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="1"
+                    required
+                    placeholder="e.g. 5"
+                    value={newInventoryForm.minThreshold}
+                    onChange={e => setNewInventoryForm(prev => ({ ...prev, minThreshold: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Cost Per Unit ({currencySymbol})</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  placeholder="e.g. 80"
+                  value={newInventoryForm.costPerUnit}
+                  onChange={e => setNewInventoryForm(prev => ({ ...prev, costPerUnit: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-600/20 transition-all cursor-pointer mt-4"
+              >
+                Add Inventory Item
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── QUICK RESTOCK MODAL ── */}
+      {showRestockModal && restockTargetItem && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowRestockModal(false)}>
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Restock Item</h3>
+                <p className="text-xs text-slate-500">Replenish stock for {restockTargetItem.item_name || restockTargetItem.itemName}</p>
+              </div>
+              <button onClick={() => setShowRestockModal(false)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 cursor-pointer">✕</button>
+            </div>
+
+            <form onSubmit={handleRestockSubmit} className="space-y-4">
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+                Current Stock: <strong>{restockTargetItem.quantity} {restockTargetItem.unit}</strong>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                  Quantity to Add ({restockTargetItem.unit}) *
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0.1"
+                  required
+                  autoFocus
+                  placeholder="e.g. 10"
+                  value={restockAddQuantity}
+                  onChange={e => setRestockAddQuantity(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-amber-600"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-600/20 transition-all cursor-pointer mt-4"
+              >
+                Confirm Restock
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+{/* ── ADD TABLE MODAL ── */}
       {showAddTableModal && (
         <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowAddTableModal(false)}>
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
