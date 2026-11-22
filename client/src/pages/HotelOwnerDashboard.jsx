@@ -49,6 +49,14 @@ export default function HotelOwnerDashboard() {
   const [diningDashboardData, setDiningDashboardData] = useState(null);
   const [diningLoading, setDiningLoading] = useState(false);
   const [salesReportPeriod, setSalesReportPeriod] = useState('daily'); // 'daily', 'weekly', 'monthly'
+  const [diningSubTab, setDiningSubTab] = useState(() => {
+    const sub = new URLSearchParams(window.location.search).get('subtab');
+    if (sub && ['live-orders', 'table-occupancy', 'overview', 'sales-trends', 'stock-alerts'].includes(sub)) {
+      return sub;
+    }
+    return 'live-orders';
+  });
+  const [tableFloorFilter, setTableFloorFilter] = useState('ALL'); // 'ALL', 'AVAILABLE', 'OCCUPIED', 'RESERVED'
 
   // Orders Management Filters
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
@@ -1118,6 +1126,60 @@ export default function HotelOwnerDashboard() {
   const orderCartTotal = orderCartSubtotal + orderCartTax;
   const occupiedRoomsCount = rooms.filter(r => r.status === 'OCCUPIED').length;
   const occupiedTablesCount = displayedTables.filter(t => t.status === 'OCCUPIED').length;
+  const availableTablesCount = displayedTables.filter(t => t.status === 'AVAILABLE' || (!t.status && t.status !== 'OCCUPIED' && t.status !== 'RESERVED')).length;
+  const reservedTablesCount = displayedTables.filter(t => t.status === 'RESERVED').length;
+
+  const activeOrdersCount = displayedOrders.filter(o => o.status !== 'PAID' && o.status !== 'COMPLETED').length;
+  const placedOrdersCount = displayedOrders.filter(o => o.status === 'PLACED').length;
+  const preparingOrdersCount = displayedOrders.filter(o => o.status === 'PREPARING').length;
+  const servedOrdersCount = displayedOrders.filter(o => o.status === 'SERVED').length;
+  const completedOrdersCount = displayedOrders.filter(o => o.status === 'PAID' || o.status === 'COMPLETED').length;
+
+  const filteredManagementOrders = useMemo(() => {
+    return displayedOrders.filter(order => {
+      // Search query
+      if (orderSearchQuery) {
+        const q = orderSearchQuery.toLowerCase();
+        const matchesId = (order.id || '').toLowerCase().includes(q);
+        const matchesTable = String(order.tableNumber || order.table_number || '').includes(q);
+        const matchesItems = (order.items || []).some(item => (item.name || item.item_name || '').toLowerCase().includes(q));
+        if (!matchesId && !matchesTable && !matchesItems) return false;
+      }
+      // Status filter
+      if (orderMgmtStatusFilter !== 'ALL') {
+        if (orderMgmtStatusFilter === 'ACTIVE') {
+          if (order.status === 'PAID' || order.status === 'COMPLETED') return false;
+        } else if (order.status !== orderMgmtStatusFilter) {
+          return false;
+        }
+      }
+      // Table filter
+      if (orderTableFilter !== 'ALL') {
+        if (String(order.tableNumber || order.table_number) !== String(orderTableFilter)) return false;
+      }
+      // Date filter
+      if (orderDateFilter === 'TODAY') {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const ordDate = (order.created_at || order.createdAt || '').slice(0, 10);
+        if (ordDate && ordDate !== todayStr) return false;
+      } else if (orderDateFilter === 'YESTERDAY') {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        const yestStr = d.toISOString().split('T')[0];
+        const ordDate = (order.created_at || order.createdAt || '').slice(0, 10);
+        if (ordDate && ordDate !== yestStr) return false;
+      }
+      return true;
+    });
+  }, [displayedOrders, orderSearchQuery, orderMgmtStatusFilter, orderTableFilter, orderDateFilter]);
+
+  const filteredFloorTables = useMemo(() => {
+    if (tableFloorFilter === 'ALL') return displayedTables;
+    if (tableFloorFilter === 'OCCUPIED') return displayedTables.filter(t => t.status === 'OCCUPIED');
+    if (tableFloorFilter === 'RESERVED') return displayedTables.filter(t => t.status === 'RESERVED');
+    if (tableFloorFilter === 'AVAILABLE') return displayedTables.filter(t => t.status === 'AVAILABLE' || (!t.status && t.status !== 'OCCUPIED' && t.status !== 'RESERVED'));
+    return displayedTables;
+  }, [displayedTables, tableFloorFilter]);
 
   const navSections = [
     {
@@ -1443,13 +1505,17 @@ export default function HotelOwnerDashboard() {
               </div>
             </div>
 
-            {/* ── 7 CORE DINING METRICS REQUIRED ── */}
+            {/* ── 7 CORE DINING METRICS REQUIRED (CLICKABLE QUICK-JUMP) ── */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3.5">
               {/* 1. Today's Total Sales */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">1. Today's Sales</span>
+              <div 
+                onClick={() => setDiningSubTab('sales-trends')}
+                className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between cursor-pointer hover:border-amber-400 hover:shadow-md transition-all group"
+                title="Click to view full Sales & Trends analysis"
+              >
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1 group-hover:text-amber-700 transition-colors">1. Today's Sales</span>
                 <div>
-                  <span className="text-xl lg:text-2xl font-black text-slate-900">
+                  <span className="text-xl lg:text-2xl font-black text-slate-900 group-hover:text-amber-600 transition-colors">
                     {currencySymbol}{(diningDashboardData?.metrics?.todaySales || 0).toLocaleString()}
                   </span>
                   <span className="text-[10px] font-bold text-emerald-600 mt-1 flex items-center">
@@ -1459,10 +1525,14 @@ export default function HotelOwnerDashboard() {
               </div>
 
               {/* 2. Total Orders */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">2. Total Orders</span>
+              <div 
+                onClick={() => { setDiningSubTab('live-orders'); setOrderMgmtStatusFilter('ALL'); }}
+                className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between cursor-pointer hover:border-amber-400 hover:shadow-md transition-all group"
+                title="Click to view all orders in Live Orders queue"
+              >
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1 group-hover:text-amber-700 transition-colors">2. Total Orders</span>
                 <div>
-                  <span className="text-xl lg:text-2xl font-black text-slate-900">
+                  <span className="text-xl lg:text-2xl font-black text-slate-900 group-hover:text-amber-600 transition-colors">
                     {diningDashboardData?.metrics?.totalOrders || displayedOrders.length}
                   </span>
                   <span className="text-[10px] font-medium text-slate-400 mt-1 block">
@@ -1472,11 +1542,15 @@ export default function HotelOwnerDashboard() {
               </div>
 
               {/* 3. Active / Pending Orders */}
-              <div className="bg-white p-4 rounded-2xl border border-amber-200 bg-amber-50/30 shadow-sm flex flex-col justify-between">
+              <div 
+                onClick={() => { setDiningSubTab('live-orders'); setOrderMgmtStatusFilter('ACTIVE'); }}
+                className="bg-white p-4 rounded-2xl border border-amber-200 bg-amber-50/30 shadow-xs flex flex-col justify-between cursor-pointer hover:border-amber-500 hover:shadow-md transition-all group"
+                title="Click to filter active kitchen orders"
+              >
                 <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block mb-1">3. Active / Pending</span>
                 <div>
-                  <span className="text-xl lg:text-2xl font-black text-amber-700">
-                    {diningDashboardData?.metrics?.activeOrders ?? displayedOrders.filter(o => o.status !== 'PAID' && o.status !== 'COMPLETED').length}
+                  <span className="text-xl lg:text-2xl font-black text-amber-700 group-hover:text-amber-800 transition-colors">
+                    {diningDashboardData?.metrics?.activeOrders ?? activeOrdersCount}
                   </span>
                   <span className="text-[10px] font-bold text-amber-600 mt-1 flex items-center">
                     <Clock className="w-3 h-3 mr-0.5" /> Kitchen cooking
@@ -1485,11 +1559,15 @@ export default function HotelOwnerDashboard() {
               </div>
 
               {/* 4. Completed Orders */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">4. Completed</span>
+              <div 
+                onClick={() => { setDiningSubTab('live-orders'); setOrderMgmtStatusFilter('PAID'); }}
+                className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between cursor-pointer hover:border-emerald-400 hover:shadow-md transition-all group"
+                title="Click to filter completed orders"
+              >
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1 group-hover:text-emerald-700 transition-colors">4. Completed</span>
                 <div>
                   <span className="text-xl lg:text-2xl font-black text-emerald-700">
-                    {diningDashboardData?.metrics?.completedOrders ?? displayedOrders.filter(o => o.status === 'PAID' || o.status === 'COMPLETED').length}
+                    {diningDashboardData?.metrics?.completedOrders ?? completedOrdersCount}
                   </span>
                   <span className="text-[10px] font-bold text-emerald-600 mt-1 flex items-center">
                     <CheckCircle2 className="w-3 h-3 mr-0.5" /> Served & settled
@@ -1498,7 +1576,11 @@ export default function HotelOwnerDashboard() {
               </div>
 
               {/* 5. Total Expenses */}
-              <div className="bg-white p-4 rounded-2xl border border-rose-200 bg-rose-50/20 shadow-sm flex flex-col justify-between">
+              <div 
+                onClick={() => setDiningSubTab('stock-alerts')}
+                className="bg-white p-4 rounded-2xl border border-rose-200 bg-rose-50/20 shadow-xs flex flex-col justify-between cursor-pointer hover:border-rose-400 hover:shadow-md transition-all group"
+                title="Click to inspect raw material expenses & kitchen stock"
+              >
                 <span className="text-[10px] font-bold text-rose-800 uppercase tracking-wider block mb-1">5. Total Expenses</span>
                 <div>
                   <span className="text-xl lg:text-2xl font-black text-rose-600">
@@ -1511,7 +1593,11 @@ export default function HotelOwnerDashboard() {
               </div>
 
               {/* 6. Gross Profit */}
-              <div className="bg-white p-4 rounded-2xl border border-blue-200 bg-blue-50/20 shadow-sm flex flex-col justify-between">
+              <div 
+                onClick={() => setDiningSubTab('sales-trends')}
+                className="bg-white p-4 rounded-2xl border border-blue-200 bg-blue-50/20 shadow-xs flex flex-col justify-between cursor-pointer hover:border-blue-400 hover:shadow-md transition-all group"
+                title="Click to view turnover & gross margins"
+              >
                 <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider block mb-1">6. Gross Profit</span>
                 <div>
                   <span className="text-xl lg:text-2xl font-black text-blue-700">
@@ -1524,9 +1610,13 @@ export default function HotelOwnerDashboard() {
               </div>
 
               {/* 7. Net Profit / Loss */}
-              <div className={`bg-white p-4 rounded-2xl border shadow-sm flex flex-col justify-between ${
-                (diningDashboardData?.metrics?.netProfit || 0) >= 0 ? 'border-emerald-300 bg-emerald-50/20' : 'border-rose-300 bg-rose-50/30'
-              }`}>
+              <div 
+                onClick={() => setDiningSubTab('sales-trends')}
+                className={`bg-white p-4 rounded-2xl border shadow-xs flex flex-col justify-between cursor-pointer hover:shadow-md transition-all group ${
+                  (diningDashboardData?.metrics?.netProfit || 0) >= 0 ? 'border-emerald-300 bg-emerald-50/20 hover:border-emerald-500' : 'border-rose-300 bg-rose-50/30 hover:border-rose-500'
+                }`}
+                title="Click to view profit ledger"
+              >
                 <span className="text-[10px] font-bold uppercase tracking-wider block mb-1 text-slate-600">
                   7. Net Profit / Loss
                 </span>
@@ -1545,245 +1635,1042 @@ export default function HotelOwnerDashboard() {
               </div>
             </div>
 
-            {/* ── SALES REPORTS & CHARTS (Daily, Weekly, Monthly) ── */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* 7-Day / Period Sales Trend Chart */}
-              <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-                  <div>
-                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Restaurant Sales Trend</h3>
-                    <p className="text-xs text-slate-500">Daily turnover and dining volume overview</p>
-                  </div>
-                  <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
-                    {['daily', 'weekly', 'monthly'].map(p => (
-                      <button
-                        key={p}
-                        onClick={() => setSalesReportPeriod(p)}
-                        className={`px-3 py-1 rounded-lg text-xs font-bold capitalize transition-all cursor-pointer ${
-                          salesReportPeriod === p ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+            {/* ── DINING OPERATIONS SUB-TABS NAVIGATION BAR ── */}
+            <div className="bg-white p-2 rounded-2xl border border-slate-200/90 shadow-xs flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDiningSubTab('live-orders')}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+                    diningSubTab === 'live-orders'
+                      ? 'bg-amber-600 text-white shadow-md shadow-amber-600/25 ring-2 ring-amber-600/20'
+                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  <ChefHat className="w-4 h-4" />
+                  <span>Live Orders</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                    diningSubTab === 'live-orders' ? 'bg-amber-800 text-amber-100' : 'bg-amber-100 text-amber-900'
+                  }`}>
+                    {activeOrdersCount} Active
+                  </span>
+                </button>
 
-                {/* Clean CSS/SVG Bar Chart - Real DB Records Only */}
-                <div className="pt-2">
-                  {(diningDashboardData?.salesByDay && diningDashboardData.salesByDay.length > 0) ? (
-                    <div className="h-44 flex items-end gap-3 sm:gap-6 px-2">
-                      {diningDashboardData.salesByDay.map((day, dIdx) => {
-                        const maxSales = Math.max(
-                          ...diningDashboardData.salesByDay.map(d => Number(d.sales) || 0),
-                          1
-                        );
-                        const sVal = Number(day.sales) || 0;
-                        const heightPct = sVal > 0 ? Math.min(100, Math.max(12, Math.round((sVal / maxSales) * 100))) : 4;
-                        return (
-                          <div key={dIdx} className="flex-1 flex flex-col items-center gap-1.5 group">
-                            <span className="text-[10px] font-mono font-bold text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                              {currencySymbol}{sVal}
-                            </span>
-                            <div className="w-full bg-slate-100 rounded-t-xl h-36 flex items-end overflow-hidden p-1">
-                              <div 
-                                className={`w-full rounded-t-lg transition-all duration-300 ${sVal > 0 ? 'bg-amber-500 group-hover:bg-amber-600' : 'bg-slate-200'}`}
-                                style={{ height: `${heightPct}%` }}
-                              />
-                            </div>
-                            <span className="text-[11px] font-bold text-slate-600 uppercase">{day.label || day.date?.slice(-5)}</span>
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                              {day.orders || 0} ord
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="h-44 flex items-center justify-center text-xs text-slate-400 font-medium">
-                      No sales recorded in this period.
-                    </div>
+                <button
+                  type="button"
+                  onClick={() => setDiningSubTab('table-occupancy')}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+                    diningSubTab === 'table-occupancy'
+                      ? 'bg-amber-600 text-white shadow-md shadow-amber-600/25 ring-2 ring-amber-600/20'
+                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  <UtensilsCrossed className="w-4 h-4" />
+                  <span>Table Occupancy</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                    diningSubTab === 'table-occupancy' ? 'bg-amber-800 text-amber-100' : 'bg-slate-200 text-slate-800'
+                  }`}>
+                    {occupiedTablesCount}/{displayedTables.length} Occupied
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDiningSubTab('overview')}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+                    diningSubTab === 'overview'
+                      ? 'bg-amber-600 text-white shadow-md shadow-amber-600/25 ring-2 ring-amber-600/20'
+                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  <LayoutDashboard className="w-4 h-4" />
+                  <span>Floor Overview</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDiningSubTab('sales-trends')}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+                    diningSubTab === 'sales-trends'
+                      ? 'bg-amber-600 text-white shadow-md shadow-amber-600/25 ring-2 ring-amber-600/20'
+                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  <span>Sales & Trends</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDiningSubTab('stock-alerts')}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+                    diningSubTab === 'stock-alerts'
+                      ? 'bg-amber-600 text-white shadow-md shadow-amber-600/25 ring-2 ring-amber-600/20'
+                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  <AlertCircle className="w-4 h-4" />
+                  <span>Kitchen Stock</span>
+                  {(diningDashboardData?.lowStockItems || []).length > 0 && (
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                      diningSubTab === 'stock-alerts' ? 'bg-rose-800 text-rose-100' : 'bg-rose-100 text-rose-800'
+                    }`}>
+                      {diningDashboardData.lowStockItems.length} Low
+                    </span>
                   )}
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pt-3 border-t border-slate-100 font-medium">
-                  <span>7-Day Volume: <strong>{diningDashboardData?.salesByDay?.reduce((s, d) => s + (Number(d.orders) || 0), 0) || 0} Orders</strong></span>
-                  <span>Avg Ticket: <strong>{currencySymbol}{diningDashboardData?.metrics?.totalOrders ? ((diningDashboardData?.metrics?.todaySales || 0) / diningDashboardData.metrics.totalOrders).toFixed(0) : '0'}</strong></span>
-                  <span>Status: <strong className="text-emerald-600 font-bold">● Active Dining Floor</strong></span>
-                </div>
+                </button>
               </div>
 
-              {/* Quick Floor Pulse & Low Stock Card */}
-              <div className="space-y-6">
-                {/* Table Floor Pulse */}
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">Table Floor Pulse</h4>
-                    <button
-                      onClick={() => setActiveTab('table-management')}
-                      className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center cursor-pointer"
-                    >
-                      Floor Plan <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
-                    </button>
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-500 pl-2">
+                <span className="hidden sm:inline-block">Floor Status:</span>
+                <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-black text-[11px] flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  {availableTablesCount} Ready / {displayedTables.length} Total Tables
+                </span>
+              </div>
+            </div>
+
+            {/* ── SUB-TAB 1: LIVE ORDERS QUEUE ── */}
+            {diningSubTab === 'live-orders' && (
+              <div className="space-y-5 animate-fade-in">
+                {/* Orders Filter & Controls Bar */}
+                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        onClick={() => setOrderMgmtStatusFilter('ALL')}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          orderMgmtStatusFilter === 'ALL' ? 'bg-slate-900 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        All ({displayedOrders.length})
+                      </button>
+                      <button
+                        onClick={() => setOrderMgmtStatusFilter('ACTIVE')}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          orderMgmtStatusFilter === 'ACTIVE' ? 'bg-amber-600 text-white shadow-xs' : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+                        }`}
+                      >
+                        Active / In Kitchen ({activeOrdersCount})
+                      </button>
+                      <button
+                        onClick={() => setOrderMgmtStatusFilter('PLACED')}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          orderMgmtStatusFilter === 'PLACED' ? 'bg-blue-600 text-white shadow-xs' : 'bg-blue-50 text-blue-800 hover:bg-blue-100'
+                        }`}
+                      >
+                        Placed ({placedOrdersCount})
+                      </button>
+                      <button
+                        onClick={() => setOrderMgmtStatusFilter('PREPARING')}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          orderMgmtStatusFilter === 'PREPARING' ? 'bg-amber-600 text-white shadow-xs' : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+                        }`}
+                      >
+                        Preparing ({preparingOrdersCount})
+                      </button>
+                      <button
+                        onClick={() => setOrderMgmtStatusFilter('SERVED')}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          orderMgmtStatusFilter === 'SERVED' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                        }`}
+                      >
+                        Served ({servedOrdersCount})
+                      </button>
+                      <button
+                        onClick={() => setOrderMgmtStatusFilter('PAID')}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          orderMgmtStatusFilter === 'PAID' ? 'bg-slate-800 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        Completed ({completedOrdersCount})
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <a
+                        href="/kitchen"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-3.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition-all flex items-center gap-1.5 no-underline border border-rose-200"
+                      >
+                        <ChefHat className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Kitchen KDS ↗</span>
+                      </a>
+                      <button
+                        onClick={() => handleOpenNewOrder()}
+                        className="px-4 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>+ Take Table Order</span>
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-4 gap-2 pt-1">
-                    {displayedTables.slice(0, 11).map((tbl) => {
-                      const occ = tbl.status === 'OCCUPIED';
-                      const res = tbl.status === 'RESERVED';
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-slate-100">
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search dish, order #, table..."
+                        value={orderSearchQuery}
+                        onChange={e => setOrderSearchQuery(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:border-amber-600"
+                      />
+                    </div>
+                    <div>
+                      <select
+                        value={orderTableFilter}
+                        onChange={e => setOrderTableFilter(e.target.value)}
+                        className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-white font-bold text-slate-700 focus:outline-none focus:border-amber-600 cursor-pointer"
+                      >
+                        <option value="ALL">All Restaurant Tables</option>
+                        {displayedTables.map(t => (
+                          <option key={t.number} value={t.number}>Table {t.number}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <select
+                        value={orderDateFilter}
+                        onChange={e => setOrderDateFilter(e.target.value)}
+                        className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-white font-bold text-slate-700 focus:outline-none focus:border-amber-600 cursor-pointer"
+                      >
+                        <option value="ALL">All Dates</option>
+                        <option value="TODAY">Today's Orders</option>
+                        <option value="YESTERDAY">Yesterday's Orders</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Orders Cards Grid */}
+                {filteredManagementOrders.length === 0 ? (
+                  <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 shadow-xs">
+                    <ChefHat className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                    <h4 className="text-sm font-bold text-slate-700">No orders in this status</h4>
+                    <p className="text-xs text-slate-400 mt-1 mb-4">Click below to create an order or switch table filters.</p>
+                    <button
+                      onClick={() => handleOpenNewOrder()}
+                      className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Take New Order</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {filteredManagementOrders.map(order => {
+                      const subtotal = order.items?.reduce((s, i) => s + ((parseFloat(i.price) || 0) * (parseInt(i.quantity, 10) || 1)), 0) || order.totalPrice || 0;
+                      const isSettled = order.status === 'PAID' || order.status === 'COMPLETED';
+                      const tableNum = order.tableNumber || order.table_number;
+
                       return (
-                        <div
-                          key={tbl.number}
-                          onClick={() => navigate(`/tables/${tbl.number}/order`)}
-                          className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer group hover:shadow-xs ${
-                            occ
-                              ? 'bg-amber-50 border-amber-300 text-amber-900'
-                              : res
-                              ? 'bg-blue-50 border-blue-300 text-blue-900'
-                              : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-emerald-300'
+                        <div 
+                          key={order.id} 
+                          className={`bg-white rounded-2xl border shadow-xs p-5 flex flex-col justify-between hover:shadow-md transition-all ${
+                            order.status === 'PLACED' ? 'border-blue-200 bg-blue-50/10' :
+                            order.status === 'PREPARING' ? 'border-amber-300 bg-amber-50/15 ring-1 ring-amber-200' :
+                            order.status === 'SERVED' ? 'border-emerald-300 bg-emerald-50/15' :
+                            'border-slate-200'
                           }`}
-                          title={`Table ${tbl.number}: Click to open dedicated order screen`}
                         >
-                          <span className="block text-xs font-black group-hover:text-amber-600 transition-colors">T{tbl.number}</span>
-                          <span className={`text-[9px] font-bold uppercase tracking-wider block mt-0.5 ${
-                            occ ? 'text-amber-700' : res ? 'text-blue-700' : 'text-emerald-600'
-                          }`}>
-                            {occ ? 'Eating' : res ? 'Reserved' : 'Free'}
-                          </span>
+                          <div>
+                            {/* Card Header: Table + Order ID + Status */}
+                            <div className="flex justify-between items-center mb-3">
+                              <div className="flex items-center gap-2">
+                                <span className="px-3 py-1 rounded-xl bg-slate-900 text-white text-xs font-black">
+                                  Table {tableNum}
+                                </span>
+                                <span className="text-[11px] font-mono font-bold text-slate-400">#{order.id.slice(-6)}</span>
+                              </div>
+                              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                order.status === 'PLACED' ? 'bg-blue-100 text-blue-800 border border-blue-200' :
+                                order.status === 'PREPARING' ? 'bg-amber-100 text-amber-800 border border-amber-300' :
+                                order.status === 'SERVED' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' :
+                                'bg-slate-100 text-slate-700'
+                              }`}>
+                                {order.status === 'PLACED' ? 'Placed' :
+                                 order.status === 'PREPARING' ? '👨‍🍳 Cooking' :
+                                 order.status === 'SERVED' ? '🍽️ Served' :
+                                 '✓ Paid'}
+                              </span>
+                            </div>
+
+                            {/* Dishes List */}
+                            <div className="divide-y divide-slate-100 my-3 max-h-36 overflow-y-auto pr-1">
+                              {order.items && order.items.length > 0 ? (
+                                order.items.map((item, idx) => (
+                                  <div key={idx} className="py-1.5 flex justify-between items-center text-xs">
+                                    <span className="text-slate-800 font-medium">
+                                      <strong className="text-amber-700 mr-1.5">{item.quantity}x</strong>
+                                      {item.name || item.item_name}
+                                    </span>
+                                    <span className="font-mono font-bold text-slate-600">
+                                      {currencySymbol}{((parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 1)).toFixed(2)}
+                                    </span>
+                                  </div>
+                                ))
+                              ) : (
+                                <p className="text-xs text-slate-400 py-2">Dining Table Order</p>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Footer with Total and Fast Action Buttons */}
+                          <div className="pt-3 border-t border-slate-100 mt-2">
+                            <div className="flex justify-between items-baseline mb-3">
+                              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Bill</span>
+                              <span className="text-lg font-black text-slate-900 font-mono">
+                                {currencySymbol}{parseFloat(subtotal).toFixed(2)}
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2">
+                              {/* Status Advancement Button */}
+                              {order.status === 'PLACED' && (
+                                <button
+                                  onClick={async () => {
+                                    await handleUpdateOrderStatusAction(order.id, 'PREPARING');
+                                    showToast(`Table ${tableNum} order cooking`);
+                                  }}
+                                  className="flex-1 py-1.5 px-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all cursor-pointer text-center"
+                                >
+                                  👨‍🍳 Start Preparing
+                                </button>
+                              )}
+
+                              {order.status === 'PREPARING' && (
+                                <button
+                                  onClick={async () => {
+                                    await handleUpdateOrderStatusAction(order.id, 'SERVED');
+                                    showToast(`Table ${tableNum} order marked Served`);
+                                  }}
+                                  className="flex-1 py-1.5 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all cursor-pointer text-center"
+                                >
+                                  🍽️ Mark Served
+                                </button>
+                              )}
+
+                              {(order.status === 'SERVED' || isSettled) && (
+                                <button
+                                  onClick={() => handleSettleOrder(order, tableNum)}
+                                  className="flex-1 py-1.5 px-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1"
+                                >
+                                  <Receipt className="w-3.5 h-3.5" />
+                                  <span>{isSettled ? 'Print Bill' : 'Settle & Print'}</span>
+                                </button>
+                              )}
+
+                              {/* Button to open dedicated table order screen to append dishes */}
+                              <button
+                                onClick={() => navigate(`/tables/${tableNum}/order`)}
+                                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                                title="Open full menu to add dishes"
+                              >
+                                <Plus className="w-3 h-3 text-amber-600" />
+                                <span>Add Dishes</span>
+                              </button>
+
+                              {/* View Receipt */}
+                              <button
+                                onClick={() => {
+                                  setBillingOrder(order);
+                                  setBillingTableNumber(tableNum);
+                                }}
+                                className="px-2.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold cursor-pointer"
+                                title="View receipt modal"
+                              >
+                                Receipt
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       );
                     })}
                   </div>
+                )}
+              </div>
+            )}
 
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] text-slate-500 font-medium">
-                    <span>Occupied: <strong className="text-amber-600">{occupiedTablesCount}</strong></span>
-                    <span>Reserved: <strong className="text-blue-600">{displayedTables.filter(t => t.status === 'RESERVED').length}</strong></span>
-                    <span>Free: <strong className="text-emerald-600">{Math.max(0, displayedTables.filter(t => t.status === 'AVAILABLE' || (!t.status && t.status !== 'OCCUPIED' && t.status !== 'RESERVED')).length)}</strong></span>
+            {/* ── SUB-TAB 2: TABLE OCCUPANCY & FLOOR PLAN ── */}
+            {diningSubTab === 'table-occupancy' && (
+              <div className="space-y-6 animate-fade-in">
+                {/* Floor Status Summary Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Total Tables</span>
+                    <span className="text-2xl font-black text-slate-900">{displayedTables.length}</span>
+                    <span className="text-[10px] font-medium text-slate-400 block mt-1">Full floor capacity</span>
+                  </div>
+                  <div className="bg-white p-4 rounded-2xl border border-amber-200 bg-amber-50/20 shadow-xs">
+                    <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block mb-1">Occupied / Eating</span>
+                    <span className="text-2xl font-black text-amber-600">{occupiedTablesCount}</span>
+                    <span className="text-[10px] font-bold text-amber-600 block mt-1 flex items-center">
+                      <UtensilsCrossed className="w-3 h-3 mr-1" /> Active dining guests
+                    </span>
+                  </div>
+                  <div className="bg-white p-4 rounded-2xl border border-emerald-200 bg-emerald-50/20 shadow-xs">
+                    <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block mb-1">Available / Ready</span>
+                    <span className="text-2xl font-black text-emerald-600">{availableTablesCount}</span>
+                    <span className="text-[10px] font-bold text-emerald-600 block mt-1 flex items-center">
+                      <CheckCircle2 className="w-3 h-3 mr-1" /> Ready for seating
+                    </span>
+                  </div>
+                  <div className="bg-white p-4 rounded-2xl border border-blue-200 bg-blue-50/20 shadow-xs">
+                    <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider block mb-1">Reserved Tables</span>
+                    <span className="text-2xl font-black text-blue-600">{reservedTablesCount}</span>
+                    <span className="text-[10px] font-bold text-blue-600 block mt-1">Upcoming bookings</span>
                   </div>
                 </div>
 
-                {/* Low Stock Alerts */}
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <AlertCircle className="w-4 h-4 text-amber-600" />
-                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">Kitchen Stock Warnings</h4>
-                    </div>
+                {/* Filter & Action Bar */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-xs font-bold text-slate-500 mr-1">Filter Floor:</span>
                     <button
-                      onClick={() => setActiveTab('inventory-management')}
-                      className="text-xs font-bold text-amber-600 hover:text-amber-700 cursor-pointer"
+                      onClick={() => setTableFloorFilter('ALL')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        tableFloorFilter === 'ALL' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
                     >
-                      Manage Stock ↗
+                      All ({displayedTables.length})
+                    </button>
+                    <button
+                      onClick={() => setTableFloorFilter('AVAILABLE')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        tableFloorFilter === 'AVAILABLE' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                      }`}
+                    >
+                      Available ({availableTablesCount})
+                    </button>
+                    <button
+                      onClick={() => setTableFloorFilter('OCCUPIED')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        tableFloorFilter === 'OCCUPIED' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+                      }`}
+                    >
+                      Occupied ({occupiedTablesCount})
+                    </button>
+                    <button
+                      onClick={() => setTableFloorFilter('RESERVED')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        tableFloorFilter === 'RESERVED' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-800 hover:bg-blue-100'
+                      }`}
+                    >
+                      Reserved ({reservedTablesCount})
                     </button>
                   </div>
 
-                  {(diningDashboardData?.lowStockItems || []).length === 0 ? (
-                    <div className="py-3 px-3 bg-emerald-50 rounded-xl text-emerald-800 text-xs font-bold flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      <span>All ingredients and gas stock above minimum thresholds</span>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {(diningDashboardData?.lowStockItems || []).map((item) => (
-                        <div key={item.id} className="p-2.5 rounded-xl bg-amber-50/80 border border-amber-200 flex items-center justify-between">
-                          <div>
-                            <span className="text-xs font-bold text-amber-950 block">{item.item_name}</span>
-                            <span className="text-[10px] text-amber-800 font-medium">
-                              Left: <strong>{item.quantity} {item.unit}</strong> (Min: {item.min_threshold} {item.unit})
-                            </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowAddTableModal(true)}
+                      className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Table</span>
+                    </button>
+                    <button
+                      onClick={() => handleOpenNewOrder()}
+                      className="px-4 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Take New Order</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Floor Tables Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {filteredFloorTables.map(table => {
+                    const isOccupied = table.status === 'OCCUPIED';
+                    const isReserved = table.status === 'RESERVED';
+                    const currentOrder = displayedOrders.find(o => 
+                      (table.currentOrderId && String(o.id) === String(table.currentOrderId)) || 
+                      (Number(o.tableNumber) === Number(table.number) && o.status !== 'PAID')
+                    );
+                    const orderTotal = currentOrder?.totalPrice ?? currentOrder?.total ?? currentOrder?.items?.reduce((s, i) => s + ((parseFloat(i.price) || 0) * (parseInt(i.quantity, 10) || 1)), 0) ?? 0;
+
+                    return (
+                      <div
+                        key={table.id || table.number}
+                        className={`bg-white rounded-2xl border p-5 transition-all shadow-xs flex flex-col justify-between group hover:shadow-md ${
+                          isOccupied
+                            ? 'border-amber-300 ring-1 ring-amber-200 bg-amber-50/10'
+                            : isReserved
+                            ? 'border-blue-300 ring-1 ring-blue-200 bg-blue-50/20'
+                            : 'border-slate-200 hover:border-emerald-300'
+                        }`}
+                      >
+                        <div>
+                          {/* Top: Table Number + Capacity + Interactive Status Dropdown + New Tab Icon */}
+                          <div className="flex items-center justify-between mb-3">
+                            <div 
+                              onClick={() => navigate(`/tables/${table.number}/order`)}
+                              className="flex items-center gap-2.5 cursor-pointer"
+                              title="Click to open dedicated order screen"
+                            >
+                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs ${
+                                isOccupied
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : isReserved
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : 'bg-emerald-100 text-emerald-800'
+                              }`}>
+                                T{table.number}
+                              </div>
+                              <div>
+                                <h4 className="text-sm font-black text-slate-900 flex items-center gap-1 group-hover:text-amber-600 transition-colors">
+                                  <span>Table {table.number}</span>
+                                  <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-60 transition-opacity" />
+                                </h4>
+                                <span className="text-[10px] text-slate-400 font-medium">{table.capacity || 4} Seats</span>
+                              </div>
+                            </div>
+
+                            {/* Status Selector */}
+                            <div className="flex items-center gap-1">
+                              <select
+                                value={table.status || 'AVAILABLE'}
+                                onChange={(e) => handleUpdateTableStatusAction(table.number, e.target.value)}
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border cursor-pointer focus:outline-none ${
+                                  isOccupied
+                                    ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                    : isReserved
+                                    ? 'bg-blue-100 text-blue-800 border-blue-300'
+                                    : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                }`}
+                              >
+                                <option value="AVAILABLE">Available</option>
+                                <option value="OCCUPIED">Occupied</option>
+                                <option value="RESERVED">Reserved</option>
+                              </select>
+
+                              <button
+                                type="button"
+                                onClick={() => window.open(`/tables/${table.number}/order`, '_blank')}
+                                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                                title="Open in new tab"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
+
+                          {/* Table Body Content */}
+                          {isOccupied && currentOrder ? (
+                            <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200/80 mb-3 space-y-1.5">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-bold text-amber-950">Active Meal</span>
+                                <span className="font-black text-amber-900 font-mono">
+                                  {currencySymbol}{parseFloat(orderTotal).toFixed(2)}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-amber-800 line-clamp-2">
+                                {currentOrder.items?.map(i => `${i.quantity}x ${i.name || i.item_name}`).join(', ') || 'Cooking in kitchen'}
+                              </p>
+                            </div>
+                          ) : isReserved ? (
+                            <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-200/80 mb-3 text-xs text-blue-900 font-medium">
+                              Table reserved for upcoming guests.
+                            </div>
+                          ) : (
+                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 mb-3 text-xs text-slate-500 font-medium flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Table is clean & ready for seating</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Bottom Actions */}
+                        <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
+                          <button
+                            onClick={() => navigate(`/tables/${table.number}/order`)}
+                            className="flex-1 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5 text-amber-400" />
+                            <span>{isOccupied ? 'Add Dishes / POS' : 'Take Order'}</span>
+                          </button>
+
+                          {isOccupied && currentOrder && (
+                            <button
+                              onClick={() => {
+                                setBillingOrder(currentOrder);
+                                setBillingTableNumber(table.number);
+                              }}
+                              className="px-2.5 py-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold cursor-pointer"
+                              title="Settle bill"
+                            >
+                              <Receipt className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ── SUB-TAB 3: FLOOR OVERVIEW (Original Combined Executive View) ── */}
+            {diningSubTab === 'overview' && (
+              <div className="space-y-6 animate-fade-in">
+                {/* ── SALES REPORTS & CHARTS (Daily, Weekly, Monthly) ── */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* 7-Day / Period Sales Trend Chart */}
+                  <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                      <div>
+                        <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Restaurant Sales Trend</h3>
+                        <p className="text-xs text-slate-500">Daily turnover and dining volume overview</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+                        {['daily', 'weekly', 'monthly'].map(p => (
+                          <button
+                            key={p}
+                            onClick={() => setSalesReportPeriod(p)}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold capitalize transition-all cursor-pointer ${
+                              salesReportPeriod === p ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Bar Chart - Real DB Records Only */}
+                    <div className="pt-2">
+                      {(diningDashboardData?.salesByDay && diningDashboardData.salesByDay.length > 0) ? (
+                        <div className="h-44 flex items-end gap-3 sm:gap-6 px-2">
+                          {diningDashboardData.salesByDay.map((day, dIdx) => {
+                            const maxSales = Math.max(
+                              ...diningDashboardData.salesByDay.map(d => Number(d.sales) || 0),
+                              1
+                            );
+                            const sVal = Number(day.sales) || 0;
+                            const heightPct = sVal > 0 ? Math.min(100, Math.max(12, Math.round((sVal / maxSales) * 100))) : 4;
+                            return (
+                              <div key={dIdx} className="flex-1 flex flex-col items-center gap-1.5 group">
+                                <span className="text-[10px] font-mono font-bold text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  {currencySymbol}{sVal}
+                                </span>
+                                <div className="w-full bg-slate-100 rounded-t-xl h-36 flex items-end overflow-hidden p-1">
+                                  <div 
+                                    className={`w-full rounded-t-lg transition-all duration-300 ${sVal > 0 ? 'bg-amber-500 group-hover:bg-amber-600' : 'bg-slate-200'}`}
+                                    style={{ height: `${heightPct}%` }}
+                                  />
+                                </div>
+                                <span className="text-[11px] font-bold text-slate-600 uppercase">{day.label || day.date?.slice(-5)}</span>
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                                  {day.orders || 0} ord
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="h-44 flex items-center justify-center text-xs text-slate-400 font-medium">
+                          No sales recorded in this period.
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pt-3 border-t border-slate-100 font-medium">
+                      <span>7-Day Volume: <strong>{diningDashboardData?.salesByDay?.reduce((s, d) => s + (Number(d.orders) || 0), 0) || 0} Orders</strong></span>
+                      <span>Avg Ticket: <strong>{currencySymbol}{diningDashboardData?.metrics?.totalOrders ? ((diningDashboardData?.metrics?.todaySales || 0) / diningDashboardData.metrics.totalOrders).toFixed(0) : '0'}</strong></span>
+                      <span>Status: <strong className="text-emerald-600 font-bold">● Active Dining Floor</strong></span>
+                    </div>
+                  </div>
+
+                  {/* Quick Floor Pulse & Low Stock Card */}
+                  <div className="space-y-6">
+                    {/* Table Floor Pulse */}
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">Table Floor Pulse</h4>
+                        <button
+                          onClick={() => setDiningSubTab('table-occupancy')}
+                          className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center cursor-pointer"
+                        >
+                          Floor Plan <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-2 pt-1">
+                        {displayedTables.slice(0, 11).map((tbl) => {
+                          const occ = tbl.status === 'OCCUPIED';
+                          const res = tbl.status === 'RESERVED';
+                          return (
+                            <div
+                              key={tbl.number}
+                              onClick={() => navigate(`/tables/${tbl.number}/order`)}
+                              className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer group hover:shadow-xs ${
+                                occ
+                                  ? 'bg-amber-50 border-amber-300 text-amber-900'
+                                  : res
+                                  ? 'bg-blue-50 border-blue-300 text-blue-900'
+                                  : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-emerald-300'
+                              }`}
+                              title={`Table ${tbl.number}: Click to open dedicated order screen`}
+                            >
+                              <span className="block text-xs font-black group-hover:text-amber-600 transition-colors">T{tbl.number}</span>
+                              <span className={`text-[9px] font-bold uppercase tracking-wider block mt-0.5 ${
+                                occ ? 'text-amber-700' : res ? 'text-blue-700' : 'text-emerald-600'
+                              }`}>
+                                {occ ? 'Eating' : res ? 'Reserved' : 'Free'}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] text-slate-500 font-medium">
+                        <span>Occupied: <strong className="text-amber-600">{occupiedTablesCount}</strong></span>
+                        <span>Reserved: <strong className="text-blue-600">{reservedTablesCount}</strong></span>
+                        <span>Free: <strong className="text-emerald-600">{availableTablesCount}</strong></span>
+                      </div>
+                    </div>
+
+                    {/* Low Stock Alerts */}
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <AlertCircle className="w-4 h-4 text-amber-600" />
+                          <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">Kitchen Stock Warnings</h4>
+                        </div>
+                        <button
+                          onClick={() => setDiningSubTab('stock-alerts')}
+                          className="text-xs font-bold text-amber-600 hover:text-amber-700 cursor-pointer"
+                        >
+                          Manage Stock ↗
+                        </button>
+                      </div>
+
+                      {(diningDashboardData?.lowStockItems || []).length === 0 ? (
+                        <div className="py-3 px-3 bg-emerald-50 rounded-xl text-emerald-800 text-xs font-bold flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          <span>All ingredients and gas stock above minimum thresholds</span>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {(diningDashboardData?.lowStockItems || []).map((item) => (
+                            <div key={item.id} className="p-2.5 rounded-xl bg-amber-50/80 border border-amber-200 flex items-center justify-between">
+                              <div>
+                                <span className="text-xs font-bold text-amber-950 block">{item.item_name}</span>
+                                <span className="text-[10px] text-amber-800 font-medium">
+                                  Left: <strong>{item.quantity} {item.unit}</strong> (Min: {item.min_threshold} {item.unit})
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  setRestockTargetItem(item);
+                                  setRestockAddQuantity('');
+                                  setShowRestockModal(true);
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-black uppercase tracking-wider cursor-pointer shadow-xs"
+                              >
+                                Restock
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── LIVE RECENT ORDERS PREVIEW ── */}
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Recent Live Orders</h3>
+                      <p className="text-xs text-slate-500">Latest active and fulfilled table orders</p>
+                    </div>
+                    <button
+                      onClick={() => setDiningSubTab('live-orders')}
+                      className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <span>Open Live Orders Tab</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+                          <th className="py-2.5 px-3">Order ID</th>
+                          <th className="py-2.5 px-3">Table #</th>
+                          <th className="py-2.5 px-3">Items Summary</th>
+                          <th className="py-2.5 px-3">Total Amount</th>
+                          <th className="py-2.5 px-3">Status</th>
+                          <th className="py-2.5 px-3 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {displayedOrders.slice(0, 6).map((ord) => {
+                          const subtotal = ord.items?.reduce((s, i) => s + ((parseFloat(i.price) || 0) * (parseInt(i.quantity, 10) || 1)), 0) || ord.totalPrice || 0;
+                          const itemsList = Array.isArray(ord.items) 
+                            ? ord.items.map(i => `${i.quantity}x ${i.name || i.item_name}`).join(', ')
+                            : 'Dining Order';
+                          return (
+                            <tr key={ord.id} className="hover:bg-slate-50/60">
+                              <td className="py-3 px-3 font-mono font-bold text-slate-800">#{ord.id.slice(-6)}</td>
+                              <td className="py-3 px-3">
+                                <span className="px-2 py-0.5 rounded-lg bg-amber-100 text-amber-900 font-black text-[11px]">
+                                  Table {ord.tableNumber || ord.table_number}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-slate-600 max-w-xs truncate" title={itemsList}>
+                                {itemsList}
+                              </td>
+                              <td className="py-3 px-3 font-black text-slate-900">{currencySymbol}{parseFloat(subtotal).toFixed(2)}</td>
+                              <td className="py-3 px-3">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                  ord.status === 'PLACED' ? 'bg-blue-100 text-blue-800' :
+                                  ord.status === 'PREPARING' ? 'bg-amber-100 text-amber-800' :
+                                  ord.status === 'SERVED' ? 'bg-emerald-100 text-emerald-800' :
+                                  'bg-slate-100 text-slate-700'
+                                }`}>
+                                  {ord.status}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-right">
+                                <button
+                                  onClick={() => {
+                                    setBillingOrder(ord);
+                                    setBillingTableNumber(ord.tableNumber || ord.table_number);
+                                  }}
+                                  className="text-amber-600 hover:text-amber-700 font-bold text-xs cursor-pointer mr-2"
+                                >
+                                  View Bill
+                                </button>
+                                <button
+                                  onClick={() => navigate(`/tables/${ord.tableNumber || ord.table_number}/order`)}
+                                  className="text-slate-700 hover:text-slate-900 font-bold text-xs cursor-pointer"
+                                >
+                                  Add Dishes ↗
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── SUB-TAB 4: SALES & TRENDS ── */}
+            {diningSubTab === 'sales-trends' && (
+              <div className="space-y-6 animate-fade-in">
+                {/* Sales Trend Detailed Card */}
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                    <div>
+                      <h3 className="text-base font-black text-slate-900 uppercase tracking-wider">Restaurant Sales & Turnover Analytics</h3>
+                      <p className="text-xs text-slate-500">Live order volumes, revenue trends, and dining ticket values</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+                      {['daily', 'weekly', 'monthly'].map(p => (
+                        <button
+                          key={p}
+                          onClick={() => setSalesReportPeriod(p)}
+                          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold capitalize transition-all cursor-pointer ${
+                            salesReportPeriod === p ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Summary Metric Pills */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Today's Revenue</span>
+                      <span className="text-xl font-black text-slate-900">{currencySymbol}{(diningDashboardData?.metrics?.todaySales || 0).toLocaleString()}</span>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Volume</span>
+                      <span className="text-xl font-black text-slate-900">{diningDashboardData?.salesByDay?.reduce((s, d) => s + (Number(d.orders) || 0), 0) || displayedOrders.length} Orders</span>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Avg Order Ticket</span>
+                      <span className="text-xl font-black text-emerald-600">{currencySymbol}{diningDashboardData?.metrics?.totalOrders ? ((diningDashboardData?.metrics?.todaySales || 0) / diningDashboardData.metrics.totalOrders).toFixed(0) : '0'}</span>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Gross Profit</span>
+                      <span className="text-xl font-black text-blue-600">{currencySymbol}{(diningDashboardData?.metrics?.grossProfit || 0).toLocaleString()}</span>
+                    </div>
+                  </div>
+
+                  {/* High Resolution Bar Chart */}
+                  <div className="pt-4">
+                    {(diningDashboardData?.salesByDay && diningDashboardData.salesByDay.length > 0) ? (
+                      <div className="h-56 flex items-end gap-3 sm:gap-8 px-4">
+                        {diningDashboardData.salesByDay.map((day, dIdx) => {
+                          const maxSales = Math.max(
+                            ...diningDashboardData.salesByDay.map(d => Number(d.sales) || 0),
+                            1
+                          );
+                          const sVal = Number(day.sales) || 0;
+                          const heightPct = sVal > 0 ? Math.min(100, Math.max(12, Math.round((sVal / maxSales) * 100))) : 4;
+                          return (
+                            <div key={dIdx} className="flex-1 flex flex-col items-center gap-2 group">
+                              <span className="text-xs font-mono font-bold text-slate-700 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {currencySymbol}{sVal}
+                              </span>
+                              <div className="w-full bg-slate-100 rounded-t-2xl h-48 flex items-end overflow-hidden p-1.5">
+                                <div 
+                                  className={`w-full rounded-t-xl transition-all duration-300 ${sVal > 0 ? 'bg-amber-500 group-hover:bg-amber-600 shadow-xs' : 'bg-slate-200'}`}
+                                  style={{ height: `${heightPct}%` }}
+                                />
+                              </div>
+                              <span className="text-xs font-black text-slate-700 uppercase">{day.label || day.date?.slice(-5)}</span>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                                {day.orders || 0} orders
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="h-56 flex items-center justify-center text-xs text-slate-400 font-medium">
+                        No sales recorded in this period.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── SUB-TAB 5: KITCHEN STOCK & INVENTORY ALERTS ── */}
+            {diningSubTab === 'stock-alerts' && (
+              <div className="space-y-6 animate-fade-in">
+                {/* Stock Health Summary */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Total Ingredients Monitored</span>
+                    <span className="text-2xl font-black text-slate-900">{inventoryList.length || (diningDashboardData?.lowStockItems?.length || 0)}</span>
+                    <span className="text-xs text-slate-400 mt-1 block font-medium">Kitchen raw materials</span>
+                  </div>
+                  <div className="bg-white p-5 rounded-2xl border border-amber-200 bg-amber-50/20 shadow-xs">
+                    <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block mb-1">Low Stock Warnings</span>
+                    <span className="text-2xl font-black text-amber-600">{(diningDashboardData?.lowStockItems || []).length}</span>
+                    <span className="text-xs text-amber-600 mt-1 block font-bold">Below minimum threshold</span>
+                  </div>
+                  <div className="bg-white p-5 rounded-2xl border border-emerald-200 bg-emerald-50/20 shadow-xs">
+                    <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block mb-1">Kitchen Readiness</span>
+                    <span className="text-2xl font-black text-emerald-600">
+                      {(diningDashboardData?.lowStockItems || []).length === 0 ? 'Optimal' : 'Restock Required'}
+                    </span>
+                    <span className="text-xs text-emerald-600 mt-1 block font-medium">Cooking inventory health</span>
+                  </div>
+                </div>
+
+                {/* Warning Banner */}
+                {(diningDashboardData?.lowStockItems || []).length > 0 ? (
+                  <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-xs font-black text-amber-950 uppercase tracking-wider">Restock Alert: {diningDashboardData.lowStockItems.length} Ingredients Need Immediate Replenishment</h4>
+                      <p className="text-xs text-amber-800 mt-0.5 font-medium">
+                        One or more key kitchen cooking ingredients are falling below the minimum safe threshold. Click "Restock" on any item below to update quantities.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 flex items-center gap-3 text-emerald-900 text-xs font-bold">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                    <span>All spices, meats, grains, vegetables, and LPG cylinder stocks are at healthy operating levels.</span>
+                  </div>
+                )}
+
+                {/* Low Stock Items List */}
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Kitchen Stock Items</h3>
+                      <p className="text-xs text-slate-500">Inventory levels and replenishment status</p>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab('inventory-management')}
+                      className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Package className="w-3.5 h-3.5" />
+                      <span>Full Inventory Hub ↗</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {(diningDashboardData?.lowStockItems && diningDashboardData.lowStockItems.length > 0) ? (
+                      diningDashboardData.lowStockItems.map((item) => (
+                        <div key={item.id} className="p-4 rounded-2xl border border-amber-200 bg-amber-50/40 flex flex-col justify-between space-y-3">
+                          <div>
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-xs font-black text-slate-900">{item.item_name}</span>
+                              <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-black uppercase">Low Stock</span>
+                            </div>
+                            <span className="text-xs text-slate-600">
+                              Current Stock: <strong className="text-rose-600">{item.quantity} {item.unit}</strong>
+                            </span>
+                            <span className="text-[11px] text-slate-400 block">Min Threshold: {item.min_threshold} {item.unit}</span>
+                          </div>
+
                           <button
                             onClick={() => {
                               setRestockTargetItem(item);
                               setRestockAddQuantity('');
                               setShowRestockModal(true);
                             }}
-                            className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-black uppercase tracking-wider cursor-pointer shadow-sm"
+                            className="w-full py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider transition-all shadow-xs cursor-pointer text-center"
                           >
-                            Restock
+                            + Restock Now
                           </button>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      ))
+                    ) : (
+                      (inventoryList.length > 0 ? inventoryList.slice(0, 6) : [
+                        { id: '1', item_name: 'Kolhapur Red Chilli Powder', quantity: 15, unit: 'kg', min_threshold: 5 },
+                        { id: '2', item_name: 'Indrayani Rice (Bags)', quantity: 8, unit: 'bags', min_threshold: 3 },
+                        { id: '3', item_name: 'Fresh Mutton (Kolhapuri)', quantity: 12, unit: 'kg', min_threshold: 5 },
+                        { id: '4', item_name: 'Cooking Refined Oil', quantity: 20, unit: 'liters', min_threshold: 8 },
+                        { id: '5', item_name: 'Commercial LPG Cylinder', quantity: 4, unit: 'cylinders', min_threshold: 2 },
+                        { id: '6', item_name: 'Fresh Paneer', quantity: 6, unit: 'kg', min_threshold: 2 }
+                      ]).map((item) => (
+                        <div key={item.id} className="p-4 rounded-2xl border border-slate-200 bg-white flex flex-col justify-between space-y-3">
+                          <div>
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-xs font-black text-slate-900">{item.item_name || item.itemName}</span>
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase">Normal</span>
+                            </div>
+                            <span className="text-xs text-slate-600">
+                              Stock: <strong>{item.quantity} {item.unit}</strong>
+                            </span>
+                            <span className="text-[11px] text-slate-400 block">Min Safe Level: {item.min_threshold || item.minThreshold} {item.unit}</span>
+                          </div>
+
+                          <button
+                            onClick={() => {
+                              setRestockTargetItem(item);
+                              setRestockAddQuantity('');
+                              setShowRestockModal(true);
+                            }}
+                            className="w-full py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition-all cursor-pointer text-center"
+                          >
+                            Add Stock
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-
-            {/* ── LIVE RECENT ORDERS PREVIEW ── */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Recent Live Orders</h3>
-                  <p className="text-xs text-slate-500">Latest active and fulfilled table orders</p>
-                </div>
-                <button
-                  onClick={() => setActiveTab('order-management')}
-                  className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-                >
-                  <span>All Orders Console</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
-                      <th className="py-2.5 px-3">Order ID</th>
-                      <th className="py-2.5 px-3">Table #</th>
-                      <th className="py-2.5 px-3">Items Summary</th>
-                      <th className="py-2.5 px-3">Total Amount</th>
-                      <th className="py-2.5 px-3">Status</th>
-                      <th className="py-2.5 px-3 text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {displayedOrders.slice(0, 5).map((ord) => {
-                      const subtotal = ord.items?.reduce((s, i) => s + (i.price * i.quantity), 0) || ord.totalPrice || 0;
-                      const itemsList = Array.isArray(ord.items) 
-                        ? ord.items.map(i => `${i.quantity}x ${i.name || i.item_name}`).join(', ')
-                        : 'Dining Order';
-                      return (
-                        <tr key={ord.id} className="hover:bg-slate-50/60">
-                          <td className="py-3 px-3 font-mono font-bold text-slate-800">#{ord.id.slice(-6)}</td>
-                          <td className="py-3 px-3">
-                            <span className="px-2 py-0.5 rounded-lg bg-amber-100 text-amber-900 font-black text-[11px]">
-                              Table {ord.tableNumber || ord.table_number}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 text-slate-600 max-w-xs truncate" title={itemsList}>
-                            {itemsList}
-                          </td>
-                          <td className="py-3 px-3 font-black text-slate-900">{currencySymbol}{parseFloat(subtotal).toFixed(2)}</td>
-                          <td className="py-3 px-3">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                              ord.status === 'PLACED' ? 'bg-blue-100 text-blue-800' :
-                              ord.status === 'PREPARING' ? 'bg-amber-100 text-amber-800' :
-                              ord.status === 'SERVED' ? 'bg-emerald-100 text-emerald-800' :
-                              'bg-slate-100 text-slate-700'
-                            }`}>
-                              {ord.status}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 text-right">
-                            <button
-                              onClick={() => {
-                                setBillingOrder(ord);
-                                setBillingTableNumber(ord.tableNumber || ord.table_number);
-                              }}
-                              className="text-amber-600 hover:text-amber-700 font-bold text-xs cursor-pointer"
-                            >
-                              View Bill
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            )}
           </div>
         )}
 
