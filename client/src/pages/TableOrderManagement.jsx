@@ -562,58 +562,164 @@ export default function TableOrderManagement() {
     }
   };
 
-  // Print Kitchen Order Ticket (KOT)
+  // Print Kitchen Order Ticket & Table Receipt (with item prices, subtotal, tax and total bill amount)
   const handlePrintKOT = () => {
     const itemsToPrint = cart.length > 0 ? cart : (activeOrder?.items || []);
     if (itemsToPrint.length === 0) {
-      showToastMsg('No items to print on KOT ticket', 'error');
+      showToastMsg('No items to print on receipt / KOT', 'error');
       return;
     }
 
-    const rows = itemsToPrint.map(i =>
-      `<tr>
-        <td style="padding:6px 8px; font-weight:bold; font-size:14px;">${i.quantity}×</td>
-        <td style="padding:6px 8px; font-size:14px;">${i.name}</td>
-        <td style="padding:6px 8px; font-size:12px; color:#555;">${i.category || ''}</td>
-       </tr>`
-    ).join('');
+    const subtotal = itemsToPrint.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 1)), 0);
+    const tax = (subtotal * taxRate) / 100;
+    const total = subtotal + tax;
+    const totalPcs = itemsToPrint.reduce((s, i) => s + (parseInt(i.quantity, 10) || 1), 0);
+    const dateFormatted = new Date().toLocaleString('en-IN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+
+    const rows = itemsToPrint.map(i => {
+      const qty = parseInt(i.quantity, 10) || 1;
+      const unitPrice = parseFloat(i.price) || 0;
+      const itemTotal = unitPrice * qty;
+      return `<tr style="border-bottom: 1px dotted #ccc;">
+        <td style="padding:6px 4px; font-weight:bold; font-size:13px; text-align:center; vertical-align:top;">${qty}×</td>
+        <td style="padding:6px 6px; font-size:13px; vertical-align:top;">
+          <div style="font-weight:700; color:#111;">${i.name}</div>
+          ${i.category ? `<div style="font-size:10px; color:#666; text-transform:uppercase; margin-top:1px;">${i.category}</div>` : ''}
+        </td>
+        <td style="padding:6px 6px; font-size:12px; text-align:right; font-family:'Courier New', monospace; color:#333; vertical-align:top;">${currencySymbol}${unitPrice.toFixed(2)}</td>
+        <td style="padding:6px 4px; font-size:13px; text-align:right; font-family:'Courier New', monospace; font-weight:bold; color:#000; vertical-align:top;">${currencySymbol}${itemTotal.toFixed(2)}</td>
+      </tr>`;
+    }).join('');
 
     const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8"/>
-  <title>KOT - Table ${currentTableNum} - ${hotelDisplayName}</title>
+  <title>Receipt - Table ${currentTableNum} - ${hotelDisplayName}</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; max-width: 300px; margin: 16px auto; color: #000; }
-    h2 { text-align: center; margin: 0 0 4px 0; font-size: 18px; text-transform: uppercase; }
-    .badge { text-align: center; font-size: 22px; font-weight: 900; background: #000; color: #fff; padding: 6px; margin: 8px 0; border-radius: 4px; }
-    p { margin: 2px 0; font-size: 11px; text-align: center; }
+    @page { margin: 4mm; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      max-width: 330px;
+      margin: 12px auto;
+      padding: 10px;
+      color: #000;
+      background: #fff;
+    }
+    .header { text-align: center; margin-bottom: 8px; }
+    h2 { margin: 0; font-size: 19px; font-weight: 900; letter-spacing: -0.5px; text-transform: uppercase; }
+    .subtitle { margin: 2px 0 0 0; font-size: 11px; color: #555; }
+    .doc-type { margin: 6px 0 2px 0; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #333; }
+    .badge {
+      display: inline-block;
+      font-size: 20px;
+      font-weight: 900;
+      background: #000;
+      color: #fff;
+      padding: 4px 14px;
+      margin: 6px 0 4px 0;
+      border-radius: 6px;
+      letter-spacing: 1px;
+    }
+    .meta { font-size: 11px; color: #444; margin: 2px 0; }
     hr { border: none; border-top: 1px dashed #000; margin: 8px 0; }
     table { width: 100%; border-collapse: collapse; }
-    .notes { font-style: italic; font-size: 12px; padding: 6px; border: 1px solid #ccc; margin-top: 8px; }
+    th {
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      padding: 6px 4px;
+      border-bottom: 1.5px solid #000;
+      letter-spacing: 0.5px;
+      color: #000;
+    }
+    .totals-box { margin-top: 4px; border-top: 1px dashed #000; padding-top: 6px; }
+    .totals-row { display: flex; justify-content: space-between; font-size: 12px; margin: 3px 0; color: #333; }
+    .grand-total {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 2px solid #000;
+      border-bottom: 2px solid #000;
+      padding: 6px 0;
+      margin-top: 6px;
+      font-size: 16px;
+      font-weight: 900;
+      color: #000;
+    }
+    .notes {
+      font-style: italic;
+      font-size: 11px;
+      padding: 6px 8px;
+      border: 1px solid #ccc;
+      background: #fdfdfd;
+      border-radius: 4px;
+      margin-top: 8px;
+    }
+    .footer { text-align: center; font-size: 11px; color: #666; margin-top: 12px; line-height: 1.4; }
   </style>
 </head>
 <body>
-  <h2>KITCHEN ORDER TICKET (KOT)</h2>
-  <p>${hotelDisplayName}</p>
-  <div class="badge">TABLE ${currentTableNum}</div>
-  <p>${new Date().toLocaleString('en-IN')}</p>
+  <div class="header">
+    <h2>${hotelDisplayName}</h2>
+    ${hotelProfile?.contact_phone ? `<p class="subtitle">Tel: ${hotelProfile.contact_phone}</p>` : ''}
+    ${hotelProfile?.address ? `<p class="subtitle">${hotelProfile.address}</p>` : ''}
+    <div class="doc-type">Table Order Receipt & KOT</div>
+    <div class="badge">TABLE ${currentTableNum}</div>
+    <p class="meta">
+      ${activeOrder ? `Order #${activeOrder.id.slice(-6).toUpperCase()} · ` : ''}${dateFormatted}
+    </p>
+  </div>
+
   <hr/>
+
   <table>
     <thead>
-      <tr style="border-bottom: 1px solid #000; font-size: 11px; text-align:left;">
-        <th>QTY</th><th>ITEM</th><th>CAT</th>
+      <tr>
+        <th style="width:14%; text-align:center;">QTY</th>
+        <th style="width:48%; text-align:left;">ITEM</th>
+        <th style="width:18%; text-align:right;">RATE</th>
+        <th style="width:20%; text-align:right;">AMOUNT</th>
       </tr>
     </thead>
-    <tbody>${rows}</tbody>
+    <tbody>
+      ${rows}
+    </tbody>
   </table>
+
+  <div class="totals-box">
+    <div class="totals-row">
+      <span>Subtotal (${totalPcs} items)</span>
+      <span style="font-family:'Courier New', monospace; font-weight:600;">${currencySymbol}${subtotal.toFixed(2)}</span>
+    </div>
+    <div class="totals-row">
+      <span>Tax / GST (${taxRate}%)</span>
+      <span style="font-family:'Courier New', monospace; font-weight:600;">${currencySymbol}${tax.toFixed(2)}</span>
+    </div>
+    <div class="grand-total">
+      <span style="letter-spacing:0.5px;">TOTAL AMOUNT</span>
+      <span style="font-family:'Courier New', monospace;">${currencySymbol}${total.toFixed(2)}</span>
+    </div>
+  </div>
+
   ${orderNotes ? `<div class="notes"><strong>Kitchen Notes:</strong> ${orderNotes}</div>` : ''}
+
   <hr/>
-  <p style="font-size:10px; opacity:0.7;">Sent by Hotel Owner POS Console</p>
+  <div class="footer">
+    <p style="margin:0 0 2px 0; font-weight:bold; color:#333;">Thank you for dining with us!</p>
+    <p style="margin:0; font-size:9px; color:#888;">Generated by LayBhari Restaurant OS Console</p>
+  </div>
 </body>
 </html>`;
 
-    const win = window.open('', '_blank', 'width=380,height=520');
+    const win = window.open('', '_blank', 'width=400,height=600');
     if (win) {
       win.document.write(html);
       win.document.close();
@@ -1319,10 +1425,10 @@ export default function TableOrderManagement() {
                     type="button"
                     onClick={handlePrintKOT}
                     className="py-2.5 px-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
-                    title="Print Kitchen Order Ticket"
+                    title="Print table order receipt with item rates and total bill amount"
                   >
                     <Printer className="w-4 h-4" />
-                    <span>Print KOT</span>
+                    <span>Print Receipt / KOT</span>
                   </button>
 
                   {isOccupied && !activeOrder && (
